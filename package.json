@@ -1,0 +1,9 @@
+{
+  "name": "cyrene-central-banking",
+  "version": "1.0.0",
+  "description": "Cyrene Central Banking Bot",
+  "main": "index.js",
+  "dependencies": {
+    "discord.js": "^14.0.0"
+  }
+}
