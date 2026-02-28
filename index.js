@@ -1,27 +1,32 @@
 const { Client, GatewayIntentBits, REST, Routes, SlashCommandBuilder } = require('discord.js');
-const fs = require('fs');
+const Database = require('better-sqlite3');
 
 const token = process.env.BOT_TOKEN;
 const clientId = process.env.CLIENT_ID;
 const guildId = process.env.GUILD_ID;
 
-const DATA_FILE = './data.json';
+// ===== DATABASE SETUP =====
+const db = new Database('economy.db');
 
-// ===== Load Data =====
-let data = { balances: {}, inventories: {} };
+// Create tables if they don't exist
+db.prepare(`
+  CREATE TABLE IF NOT EXISTS balances (
+    userId TEXT PRIMARY KEY,
+    credits INTEGER
+  )
+`).run();
 
-if (fs.existsSync(DATA_FILE)) {
-  data = JSON.parse(fs.readFileSync(DATA_FILE));
-}
-
-// ===== Save Function =====
-function saveData() {
-  fs.writeFileSync(DATA_FILE, JSON.stringify(data, null, 2));
-}
+db.prepare(`
+  CREATE TABLE IF NOT EXISTS inventory (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    userId TEXT,
+    item TEXT
+  )
+`).run();
 
 const client = new Client({ intents: [GatewayIntentBits.Guilds] });
 
-// ===== Commands =====
+// ===== COMMANDS =====
 const commands = [
   new SlashCommandBuilder().setName('balance').setDescription('Check your credits'),
   new SlashCommandBuilder().setName('inventory').setDescription('View your registered assets'),
@@ -35,7 +40,7 @@ const commands = [
         .setRequired(true))
 ].map(cmd => cmd.toJSON());
 
-// ===== Register Commands =====
+// ===== REGISTER COMMANDS =====
 const rest = new REST({ version: '10' }).setToken(token);
 
 (async () => {
@@ -51,32 +56,59 @@ client.once('ready', () => {
   console.log(`Online as ${client.user.tag}`);
 });
 
-// ===== Interaction Handler =====
+// ===== HELPER FUNCTIONS =====
+function ensureUser(userId) {
+  const user = db.prepare('SELECT credits FROM balances WHERE userId = ?').get(userId);
+  if (!user) {
+    db.prepare('INSERT INTO balances (userId, credits) VALUES (?, ?)').run(userId, 500);
+  }
+}
+
+function getBalance(userId) {
+  return db.prepare('SELECT credits FROM balances WHERE userId = ?').get(userId).credits;
+}
+
+function deductCredits(userId, amount) {
+  db.prepare('UPDATE balances SET credits = credits - ? WHERE userId = ?')
+    .run(amount, userId);
+}
+
+function addItem(userId, item) {
+  db.prepare('INSERT INTO inventory (userId, item) VALUES (?, ?)').run(userId, item);
+}
+
+function getInventory(userId) {
+  return db.prepare('SELECT item FROM inventory WHERE userId = ?').all(userId);
+}
+
+// ===== COMMAND HANDLER =====
 client.on('interactionCreate', async interaction => {
   if (!interaction.isChatInputCommand()) return;
 
   try {
     const { commandName, user, options } = interaction;
+    const userId = user.id;
 
-    if (!data.balances[user.id]) data.balances[user.id] = 500;
-    if (!data.inventories[user.id]) data.inventories[user.id] = [];
+    ensureUser(userId);
 
     // BALANCE
     if (commandName === 'balance') {
+      const balance = getBalance(userId);
       return interaction.reply(
-        `Central Banking confirms a balance of **${data.balances[user.id]} credits**.`
+        `Central Banking confirms a balance of **${balance} credits**.`
       );
     }
 
     // INVENTORY
     if (commandName === 'inventory') {
-      if (!data.inventories[user.id].length) {
+      const items = getInventory(userId);
+
+      if (!items.length) {
         return interaction.reply('No registered assets.');
       }
 
-      return interaction.reply(
-        `Registered Assets:\n• ${data.inventories[user.id].join('\n• ')}`
-      );
+      const list = items.map(i => i.item).join('\n• ');
+      return interaction.reply(`Registered Assets:\n• ${list}`);
     }
 
     // MEDPOINT DISPLAY
@@ -89,37 +121,34 @@ client.on('interactionCreate', async interaction => {
       );
     }
 
-    // BUY
+    // BUY ITEMS
     if (commandName === 'buy') {
       const item = options.getString('item').toLowerCase();
 
       // MED STIM
       if (item === 'medstim' || item === 'med stim') {
         const price = 150;
-        if (data.balances[user.id] < price) return interaction.reply('Insufficient credits.');
-        data.balances[user.id] -= price;
-        data.inventories[user.id].push('Med Stim');
-        saveData();
+        if (getBalance(userId) < price) return interaction.reply('Insufficient credits.');
+        deductCredits(userId, price);
+        addItem(userId, 'Med Stim');
         return interaction.reply('Purchase approved. Med Stim added to registered assets.');
       }
 
       // RECOVERY POTION
-      if (item === 'recovery' || item === 'recovery potion') {
+      if (item === 'recovery potion' || item === 'recovery potion') {
         const price = 250;
-        if (data.balances[user.id] < price) return interaction.reply('Insufficient credits.');
-        data.balances[user.id] -= price;
-        data.inventories[user.id].push('Recovery Potion');
-        saveData();
+        if (getBalance(userId) < price) return interaction.reply('Insufficient credits.');
+        deductCredits(userId, price);
+        addItem(userId, 'Recovery Potion');
         return interaction.reply('Purchase approved. Recovery Potion added to registered assets.');
       }
 
       // DETOX INJECTOR
-      if (item === 'detox' || item === 'detox injector') {
+      if (item === 'detox injector' || item === 'detox injector') {
         const price = 200;
-        if (data.balances[user.id] < price) return interaction.reply('Insufficient credits.');
-        data.balances[user.id] -= price;
-        data.inventories[user.id].push('Detox Injector');
-        saveData();
+        if (getBalance(userId) < price) return interaction.reply('Insufficient credits.');
+        deductCredits(userId, price);
+        addItem(userId, 'Detox Injector');
         return interaction.reply('Purchase approved. Detox Injector added to registered assets.');
       }
 
