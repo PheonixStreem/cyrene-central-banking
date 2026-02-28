@@ -10,17 +10,6 @@ const client = new Client({ intents: [GatewayIntentBits.Guilds] });
 const balances = {};
 const inventories = {};
 
-// ===== MedPoint Items =====
-const medpointItems = {
-  "med stim": { name: "Med Stim", price: 150 },
-  "recovery potion": { name: "Recovery Potion", price: 250 },
-  "nanobot healing vials": { name: "Nanobot Healing Vials", price: 350 },
-  "blood toxin filter": { name: "Portable Blood-Toxin Filters", price: 180 },
-  "oxygen mask": { name: "Oxygen Rebreather Mask", price: 220 },
-  "detox injector": { name: "Detox Injector", price: 200 },
-  "neural stabilizer": { name: "Neural Stabilizer Shot", price: 300 }
-};
-
 // ===== Commands =====
 const commands = [
   new SlashCommandBuilder()
@@ -28,24 +17,12 @@ const commands = [
     .setDescription('Check your credits'),
 
   new SlashCommandBuilder()
-    .setName('medpoint')
-    .setDescription('View MedPoint inventory'),
-
-  new SlashCommandBuilder()
-    .setName('buy')
-    .setDescription('Purchase an item from MedPoint')
-    .addStringOption(option =>
-      option.setName('item')
-        .setDescription('Item name (flexible)')
-        .setRequired(true))
-    .addIntegerOption(option =>
-      option.setName('quantity')
-        .setDescription('Amount to purchase')
-        .setRequired(true)),
-
-  new SlashCommandBuilder()
     .setName('inventory')
-    .setDescription('View your registered assets')
+    .setDescription('View your registered assets'),
+
+  new SlashCommandBuilder()
+    .setName('medpoint')
+    .setDescription('View MedPoint medical inventory')
 ].map(cmd => cmd.toJSON());
 
 // ===== Register Commands =====
@@ -71,59 +48,17 @@ client.once('ready', () => {
 client.on('interactionCreate', async interaction => {
   if (!interaction.isChatInputCommand()) return;
 
-  const { commandName, user, options } = interaction;
+  const { commandName, user } = interaction;
 
-  if (!balances[user.id]) balances[user.id] = 500; // starter credits for testing
+  if (!balances[user.id]) balances[user.id] = 500;
   if (!inventories[user.id]) inventories[user.id] = [];
 
-  // SHOW MEDPOINT
-  if (commandName === 'medpoint') {
-    const list = Object.values(medpointItems)
-      .map(item => `• ${item.name} — ${item.price} credits`)
-      .join('\n');
-
-    return interaction.reply(`**MedPoint Inventory**\n${list}`);
-  }
-
-  // FLEXIBLE BUY
-  if (commandName === 'buy') {
-    const input = options.getString('item').toLowerCase();
-    const quantity = options.getInteger('quantity');
-
-    const match = Object.keys(medpointItems).find(key =>
-      input.includes(key) || key.includes(input)
-    );
-
-    if (!match) {
-      return interaction.reply("MedPoint doesn't recognize that item.");
-    }
-
-    const item = medpointItems[match];
-    const totalCost = item.price * quantity;
-
-    if (balances[user.id] < totalCost) {
-      return interaction.reply("Insufficient credits.");
-    }
-
-    balances[user.id] -= totalCost;
-
-    for (let i = 0; i < quantity; i++) {
-      inventories[user.id].push(item.name);
-    }
-
-    return interaction.reply(
-      `Purchase approved. ${quantity} × ${item.name} added to registered assets.`
-    );
-  }
-
-  // BALANCE
   if (commandName === 'balance') {
     return interaction.reply(
       `Central Banking confirms a balance of **${balances[user.id]} credits**.`
     );
   }
 
-  // INVENTORY
   if (commandName === 'inventory') {
     if (!inventories[user.id].length) {
       return interaction.reply('No registered assets.');
@@ -133,7 +68,22 @@ client.on('interactionCreate', async interaction => {
       `Registered Assets:\n• ${inventories[user.id].join('\n• ')}`
     );
   }
+
+  if (commandName === 'medpoint') {
+    return interaction.reply(
+`**MedPoint Inventory**
+• Med Stim — 150 credits
+• Recovery Potion — 250 credits
+• Nanobot Healing Vials — 350 credits
+• Portable Blood-Toxin Filters — 180 credits
+• Oxygen Rebreather Mask — 220 credits
+• Detox Injector — 200 credits
+• Neural Stabilizer Shot — 300 credits`
+    );
+  }
 });
 
 client.login(token);
+
+// Prevent Render worker from exiting
 setInterval(() => {}, 1000 * 60 * 60);
