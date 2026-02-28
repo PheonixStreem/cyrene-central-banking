@@ -154,7 +154,16 @@ client.on('interactionCreate', async interaction => {
 
       return interaction.reply('MedPoint does not recognize that item.');
     }
-
+    
+// OXYGEN REBREATHER MASK
+if (item === 'oxygen' || item === 'oxygen mask' || item === 'rebreather') {
+  const price = 220;
+  if (getBalance(userId) < price) return interaction.reply('Insufficient credits.');
+  deductCredits(userId, price);
+  addItem(userId, 'Oxygen Rebreather Mask');
+  return interaction.reply('Purchase approved. Oxygen Rebreather Mask added to registered assets.');
+}
+    
   } catch (error) {
     console.error('Interaction error:', error);
     if (interaction.replied || interaction.deferred) {
