@@ -10,6 +10,17 @@ const client = new Client({ intents: [GatewayIntentBits.Guilds] });
 const balances = {};
 const inventories = {};
 
+// ===== MedPoint Shop =====
+const medpointItems = {
+  "Med Stim": 150,
+  "Recovery Potion": 250,
+  "Nanobot Healing Vials": 350,
+  "Portable Blood-Toxin Filters": 180,
+  "Oxygen Rebreather Mask": 220,
+  "Detox Injector": 200,
+  "Neural Stabilizer Shot": 300
+};
+
 // ===== Slash Commands =====
 const commands = [
   new SlashCommandBuilder()
@@ -47,7 +58,20 @@ const commands = [
   // 🏥 MEDPOINT DISPLAY
   new SlashCommandBuilder()
     .setName('medpoint')
-    .setDescription('View MedPoint medical inventory')
+    .setDescription('View MedPoint medical inventory'),
+
+  // 🛒 BUY COMMAND
+  new SlashCommandBuilder()
+    .setName('buy')
+    .setDescription('Purchase an item from MedPoint')
+    .addStringOption(option =>
+      option.setName('item')
+        .setDescription('Item name')
+        .setRequired(true))
+    .addIntegerOption(option =>
+      option.setName('quantity')
+        .setDescription('Amount to purchase')
+        .setRequired(true))
 ].map(cmd => cmd.toJSON());
 
 // ===== Register Commands =====
@@ -65,7 +89,6 @@ const rest = new REST({ version: '10' }).setToken(token);
   }
 })();
 
-// ===== Bot Ready =====
 client.once('ready', () => {
   console.log(`Online as ${client.user.tag}`);
 });
@@ -79,17 +102,40 @@ client.on('interactionCreate', async interaction => {
   if (!balances[user.id]) balances[user.id] = 0;
   if (!inventories[user.id]) inventories[user.id] = [];
 
-  // 🏥 MEDPOINT SHOP DISPLAY
+  // MEDPOINT DISPLAY
   if (commandName === 'medpoint') {
+    const list = Object.entries(medpointItems)
+      .map(([name, price]) => `• ${name} — ${price} credits`)
+      .join('\n');
+
+    return interaction.reply(`**MedPoint Inventory**\n${list}`);
+  }
+
+  // BUY ITEMS
+  if (commandName === 'buy') {
+    const item = options.getString('item');
+    const quantity = options.getInteger('quantity');
+
+    const price = medpointItems[item];
+
+    if (!price) {
+      return interaction.reply("Item not found at MedPoint.");
+    }
+
+    const totalCost = price * quantity;
+
+    if (balances[user.id] < totalCost) {
+      return interaction.reply("Insufficient credits.");
+    }
+
+    balances[user.id] -= totalCost;
+
+    for (let i = 0; i < quantity; i++) {
+      inventories[user.id].push(item);
+    }
+
     return interaction.reply(
-`**MedPoint Inventory**
-• Med Stim — 150 credits
-• Recovery Potion — 250 credits
-• Nanobot Healing Vials — 350 credits
-• Portable Blood-Toxin Filters — 180 credits
-• Oxygen Rebreather Mask — 220 credits
-• Detox Injector — 200 credits
-• Neural Stabilizer Shot — 300 credits`
+      `Purchase approved. ${quantity} × ${item} added to registered assets.`
     );
   }
 
@@ -100,7 +146,7 @@ client.on('interactionCreate', async interaction => {
     );
   }
 
-  // GIVE (Port Authority only)
+  // GIVE
   if (commandName === 'give') {
     const member = interaction.member;
     const hasRole = member.roles.cache.some(role => role.name === "Port Authority");
@@ -120,7 +166,7 @@ client.on('interactionCreate', async interaction => {
     );
   }
 
-  // GRANT ITEM (Port Authority only)
+  // GRANT ITEM
   if (commandName === 'grant-item') {
     const member = interaction.member;
     const hasRole = member.roles.cache.some(role => role.name === "Port Authority");
@@ -132,7 +178,6 @@ client.on('interactionCreate', async interaction => {
     const target = options.getUser('user');
     const item = options.getString('item');
 
-    if (!inventories[target.id]) inventories[target.id] = [];
     inventories[target.id].push(item);
 
     return interaction.reply(
@@ -142,18 +187,16 @@ client.on('interactionCreate', async interaction => {
 
   // INVENTORY
   if (commandName === 'inventory') {
-    const items = inventories[user.id];
-
-    if (!items.length) {
+    if (!inventories[user.id].length) {
       return interaction.reply('No registered assets.');
     }
 
     return interaction.reply(
-      `Registered Assets:\n• ${items.join('\n• ')}`
+      `Registered Assets:\n• ${inventories[user.id].join('\n• ')}`
     );
   }
 
-  // REMOVE ITEM (Port Authority only)
+  // REMOVE ITEM
   if (commandName === 'remove-item') {
     const member = interaction.member;
     const hasRole = member.roles.cache.some(role => role.name === "Port Authority");
