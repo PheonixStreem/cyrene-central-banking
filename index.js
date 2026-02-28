@@ -1,15 +1,11 @@
-const { Client, GatewayIntentBits, SlashCommandBuilder, Routes, PermissionsBitField } = require('discord.js');
-const { REST } = require('@discordjs/rest');
+const { Client, GatewayIntentBits, PermissionsBitField } = require('discord.js');
 
 const TOKEN = process.env.TOKEN;
-const CLIENT_ID = process.env.CLIENT_ID;
-const GUILD_ID = process.env.GUILD_ID;
 
 const client = new Client({
-  intents: [GatewayIntentBits.Guilds]
+  intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMembers]
 });
 
-// ===== STORAGE =====
 const balances = new Map();
 
 function getBalance(userId) {
@@ -17,38 +13,14 @@ function getBalance(userId) {
   return balances.get(userId);
 }
 
-// ===== COMMANDS =====
-const commands = [
-  new SlashCommandBuilder()
-    .setName('balance')
-    .setDescription('Check your credits'),
-
-  new SlashCommandBuilder()
-    .setName('give')
-    .setDescription('Admin: give credits')
-    .addUserOption(o =>
-      o.setName('user').setDescription('User').setRequired(true))
-    .addIntegerOption(o =>
-      o.setName('amount').setDescription('Amount').setRequired(true))
-].map(cmd => cmd.toJSON());
-
-// ===== REGISTER COMMANDS (SAFE) =====
-client.once('clientReady', async () => {
+client.once('clientReady', () => {
   console.log(`Online as ${client.user.tag}`);
-
-  try {
-    const rest = new REST({ version: '10' }).setToken(TOKEN);
-    await rest.put(
-      Routes.applicationGuildCommands(CLIENT_ID, GUILD_ID),
-      { body: commands }
-    );
-    console.log('Commands registered.');
-  } catch (err) {
-    console.error('Command registration failed:', err);
-  }
 });
 
-// ===== EVENTS =====
+client.on('guildMemberAdd', member => {
+  balances.set(member.id, 300);
+});
+
 client.on('interactionCreate', async interaction => {
   if (!interaction.isChatInputCommand()) return;
 
@@ -57,7 +29,7 @@ client.on('interactionCreate', async interaction => {
     return interaction.reply(`Balance: ${getBalance(interaction.user.id)} credits`);
   }
 
-  // GIVE CREDITS
+  // GIVE (ADMIN)
   if (interaction.commandName === 'give') {
     if (!interaction.member.permissions.has(PermissionsBitField.Flags.Administrator)) {
       return interaction.reply({ content: 'No permission.', ephemeral: true });
@@ -73,5 +45,4 @@ client.on('interactionCreate', async interaction => {
   }
 });
 
-// ===== LOGIN =====
 client.login(TOKEN);
