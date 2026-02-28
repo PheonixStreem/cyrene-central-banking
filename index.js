@@ -1,14 +1,141 @@
-const { Client, GatewayIntentBits } = require('discord.js');
+const { Client, GatewayIntentBits, REST, Routes, SlashCommandBuilder } = require('discord.js');
 
-console.log("Starting Cyrene Central Banking...");
+const token = process.env.BOT_TOKEN;
+const clientId = process.env.CLIENT_ID;
+const guildId = process.env.GUILD_ID;
 
 const client = new Client({ intents: [GatewayIntentBits.Guilds] });
 
+// ===== In-memory storage =====
+const balances = {};
+const inventories = {};
+
+// ===== Slash Commands =====
+const commands = [
+  new SlashCommandBuilder()
+    .setName('balance')
+    .setDescription('Check your credits'),
+
+  new SlashCommandBuilder()
+    .setName('give')
+    .setDescription('Give credits to a user')
+    .addUserOption(option =>
+      option.setName('user').setDescription('User').setRequired(true))
+    .addIntegerOption(option =>
+      option.setName('amount').setDescription('Amount').setRequired(true)),
+
+  new SlashCommandBuilder()
+    .setName('grant-item')
+    .setDescription('Register an asset to a user')
+    .addUserOption(option =>
+      option.setName('user').setDescription('User').setRequired(true))
+    .addStringOption(option =>
+      option.setName('item').setDescription('Item name').setRequired(true)),
+
+  new SlashCommandBuilder()
+    .setName('inventory')
+    .setDescription('View your inventory'),
+
+  new SlashCommandBuilder()
+    .setName('remove-item')
+    .setDescription('Remove an asset from a user')
+    .addUserOption(option =>
+      option.setName('user').setDescription('User').setRequired(true))
+    .addStringOption(option =>
+      option.setName('item').setDescription('Item name').setRequired(true)),
+].map(cmd => cmd.toJSON());
+
+// ===== Register Commands =====
+const rest = new REST({ version: '10' }).setToken(token);
+
+(async () => {
+  try {
+    await rest.put(
+      Routes.applicationGuildCommands(clientId, guildId),
+      { body: commands }
+    );
+    console.log('Commands registered.');
+  } catch (err) {
+    console.error(err);
+  }
+})();
+
+// ===== Bot Ready =====
 client.once('ready', () => {
-  console.log(`Logged in as ${client.user.tag}`);
+  console.log(`Online as ${client.user.tag}`);
 });
 
-client.login(process.env.BOT_TOKEN);
+// ===== Command Handling =====
+client.on('interactionCreate', async interaction => {
+  if (!interaction.isChatInputCommand()) return;
 
-// Prevent exit
+  const { commandName, user, options } = interaction;
+
+  if (!balances[user.id]) balances[user.id] = 0;
+  if (!inventories[user.id]) inventories[user.id] = [];
+
+  // BALANCE
+  if (commandName === 'balance') {
+    return interaction.reply(
+      `Central Banking confirms a balance of **${balances[user.id]} credits**.`
+    );
+  }
+
+  // GIVE
+  if (commandName === 'give') {
+    const target = options.getUser('user');
+    const amount = options.getInteger('amount');
+
+    if (!balances[target.id]) balances[target.id] = 0;
+    balances[target.id] += amount;
+
+    return interaction.reply(
+      `Port Authority authorized a disbursement of **${amount} credits** to ${target.username}.`
+    );
+  }
+
+  // GRANT ITEM
+  if (commandName === 'grant-item') {
+    const target = options.getUser('user');
+    const item = options.getString('item');
+
+    if (!inventories[target.id]) inventories[target.id] = [];
+    inventories[target.id].push(item);
+
+    return interaction.reply(
+      `Asset registered to ${target.username}: **${item}**`
+    );
+  }
+
+  // INVENTORY
+  if (commandName === 'inventory') {
+    const items = inventories[user.id];
+
+    if (!items.length) {
+      return interaction.reply('No registered assets.');
+    }
+
+    return interaction.reply(
+      `Registered Assets:\n• ${items.join('\n• ')}`
+    );
+  }
+
+  // REMOVE ITEM
+  if (commandName === 'remove-item') {
+    const target = options.getUser('user');
+    const item = options.getString('item');
+
+    if (!inventories[target.id]) inventories[target.id] = [];
+
+    inventories[target.id] = inventories[target.id].filter(i => i !== item);
+
+    return interaction.reply(
+      `Asset removed from ${target.username}: **${item}**`
+    );
+  }
+});
+
+client.login(token);
+
+// Prevent Render from exiting
 setInterval(() => {}, 1000 * 60 * 60);
