@@ -22,7 +22,15 @@ const commands = [
 
   new SlashCommandBuilder()
     .setName('medpoint')
-    .setDescription('View MedPoint medical inventory')
+    .setDescription('View MedPoint medical inventory'),
+
+  new SlashCommandBuilder()
+    .setName('buy')
+    .setDescription('Buy a MedPoint item')
+    .addStringOption(option =>
+      option.setName('item')
+        .setDescription('Item name')
+        .setRequired(true))
 ].map(cmd => cmd.toJSON());
 
 // ===== Register Commands =====
@@ -48,7 +56,7 @@ client.once('ready', () => {
 client.on('interactionCreate', async interaction => {
   if (!interaction.isChatInputCommand()) return;
 
-  const { commandName, user } = interaction;
+  const { commandName, user, options } = interaction;
 
   if (!balances[user.id]) balances[user.id] = 500;
   if (!inventories[user.id]) inventories[user.id] = [];
@@ -81,9 +89,27 @@ client.on('interactionCreate', async interaction => {
 • Neural Stabilizer Shot — 300 credits`
     );
   }
+
+  // 🛒 BUY — MED STIM ONLY
+  if (commandName === 'buy') {
+    const item = options.getString('item').toLowerCase();
+
+    if (item !== 'medstim' && item !== 'med stim') {
+      return interaction.reply('MedPoint currently only offers Med Stim for purchase.');
+    }
+
+    const price = 150;
+
+    if (balances[user.id] < price) {
+      return interaction.reply('Insufficient credits.');
+    }
+
+    balances[user.id] -= price;
+    inventories[user.id].push('Med Stim');
+
+    return interaction.reply('Purchase approved. Med Stim added to registered assets.');
+  }
 });
 
 client.login(token);
-
-// Prevent Render worker from exiting
 setInterval(() => {}, 1000 * 60 * 60);
