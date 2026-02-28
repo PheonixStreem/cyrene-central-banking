@@ -1,13 +1,14 @@
 {
   "name": "cyrene-central-banking",
   "version": "1.0.0",
-  "description": "Cyberpunk economy bot",
+  "description": "Cyrene Economy Bot",
   "main": "index.js",
+  "type": "module",
   "scripts": {
     "start": "node index.js"
   },
   "dependencies": {
     "discord.js": "^14.14.1",
-    "better-sqlite3": "^9.4.0"
+    "@supabase/supabase-js": "^2.39.0"
   }
-}
+
