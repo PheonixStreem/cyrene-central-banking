@@ -24,6 +24,21 @@ client.on('guildMemberAdd', member => {
 client.on('interactionCreate', async interaction => {
   if (!interaction.isChatInputCommand()) return;
 
+  // INVENTORY
+if (interaction.commandName === 'inventory') {
+  const inv = getInventory(interaction.user.id);
+
+  if (Object.keys(inv).length === 0) {
+    return interaction.reply('Your inventory is empty.');
+  }
+
+  const list = Object.entries(inv)
+    .map(([item, qty]) => `${item}: ${qty}`)
+    .join('\n');
+
+  return interaction.reply(`Your inventory:\n${list}`);
+}
+
   // BALANCE
   if (interaction.commandName === 'balance') {
     return interaction.reply(`Balance: ${getBalance(interaction.user.id)} credits`);
