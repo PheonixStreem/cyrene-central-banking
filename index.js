@@ -3,6 +3,8 @@ require('dotenv').config();
 const { Client, GatewayIntentBits, SlashCommandBuilder, REST, Routes } = require('discord.js');
 
 console.log("Starting Cyrene Central Banking...");
+console.log("TOKEN exists:", !!process.env.TOKEN);
+console.log("CLIENT_ID exists:", !!process.env.CLIENT_ID);
 
 // Discord client
 const client = new Client({
@@ -14,7 +16,7 @@ client.once('clientReady', () => {
 });
 
 // =========================
-// IN-MEMORY STORAGE
+// MEMORY STORAGE
 // =========================
 
 const balances = {};
@@ -60,12 +62,10 @@ client.on('interactionCreate', async interaction => {
 
   const userId = interaction.user.id;
 
-  // BALANCE
   if (interaction.commandName === 'balance') {
     return interaction.reply(`Balance: ${getBalance(userId)} credits`);
   }
 
-  // INVENTORY
   if (interaction.commandName === 'inventory') {
     const inv = inventories[userId];
 
@@ -79,7 +79,6 @@ client.on('interactionCreate', async interaction => {
     return interaction.reply(`Your Inventory:\n${list}`);
   }
 
-  // MEDSHOP
   if (interaction.commandName === 'medshop') {
     const list = Object.entries(medShop)
       .map(([item, price]) => `${item} — ${price} credits`)
@@ -88,7 +87,6 @@ client.on('interactionCreate', async interaction => {
     return interaction.reply(`Med Shop:\n${list}`);
   }
 
-  // MEDBUY
   if (interaction.commandName === 'medbuy') {
     const item = interaction.options.getString('item');
     const qty = interaction.options.getInteger('quantity');
