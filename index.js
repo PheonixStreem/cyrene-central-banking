@@ -10,7 +10,7 @@ const guildId = process.env.GUILD_ID;
 const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
-    GatewayIntentBits.GuildMembers // needed for join credits
+    GatewayIntentBits.GuildMembers
   ]
 });
 
@@ -88,11 +88,16 @@ client.on('guildMemberAdd', member => {
   if (!balances[member.id]) {
     balances[member.id] = 300;
 
-    const channel = member.guild.systemChannel;
+    const channel = member.guild.channels.cache.find(
+      c => c.name === "city-entry-notices"
+    );
+
     if (channel) {
       channel.send(
         `Port Authority has issued **300 credits** to ${member.user.username}. Welcome to Cyrene.`
       );
+    } else {
+      console.log("Channel #city-entry-notices not found.");
     }
   }
 });
@@ -115,7 +120,7 @@ client.on('interactionCreate', async interaction => {
     );
   }
 
-  // GIVE
+  // GIVE (Port Authority only)
   if (commandName === 'give') {
     const member = interaction.member;
     const hasRole = member.roles.cache.some(role => role.name === "Port Authority");
@@ -135,7 +140,7 @@ client.on('interactionCreate', async interaction => {
     );
   }
 
-  // GRANT ITEM
+  // GRANT ITEM (Port Authority only)
   if (commandName === 'grant-item') {
     const member = interaction.member;
     const hasRole = member.roles.cache.some(role => role.name === "Port Authority");
@@ -168,7 +173,7 @@ client.on('interactionCreate', async interaction => {
     );
   }
 
-  // REMOVE ITEM
+  // REMOVE ITEM (Port Authority only)
   if (commandName === 'remove-item') {
     const member = interaction.member;
     const hasRole = member.roles.cache.some(role => role.name === "Port Authority");
