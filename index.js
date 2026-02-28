@@ -61,12 +61,14 @@ client.on('interactionCreate', async interaction => {
   if (!balances[user.id]) balances[user.id] = 500;
   if (!inventories[user.id]) inventories[user.id] = [];
 
+  // BALANCE
   if (commandName === 'balance') {
     return interaction.reply(
       `Central Banking confirms a balance of **${balances[user.id]} credits**.`
     );
   }
 
+  // INVENTORY
   if (commandName === 'inventory') {
     if (!inventories[user.id].length) {
       return interaction.reply('No registered assets.');
@@ -77,6 +79,7 @@ client.on('interactionCreate', async interaction => {
     );
   }
 
+  // MEDPOINT DISPLAY
   if (commandName === 'medpoint') {
     return interaction.reply(
 `**MedPoint Inventory**
@@ -90,24 +93,29 @@ client.on('interactionCreate', async interaction => {
     );
   }
 
-  // 🛒 BUY — MED STIM ONLY
+  // BUY ITEMS
   if (commandName === 'buy') {
     const item = options.getString('item').toLowerCase();
 
-    if (item !== 'medstim' && item !== 'med stim') {
-      return interaction.reply('MedPoint currently only offers Med Stim for purchase.');
+    // 🩺 MED STIM
+    if (item === 'medstim' || item === 'med stim') {
+      const price = 150;
+      if (balances[user.id] < price) return interaction.reply('Insufficient credits.');
+      balances[user.id] -= price;
+      inventories[user.id].push('Med Stim');
+      return interaction.reply('Purchase approved. Med Stim added to registered assets.');
     }
 
-    const price = 150;
-
-    if (balances[user.id] < price) {
-      return interaction.reply('Insufficient credits.');
+    // 💊 RECOVERY POTION
+    if (item === 'recovery' || item === 'recovery potion') {
+      const price = 250;
+      if (balances[user.id] < price) return interaction.reply('Insufficient credits.');
+      balances[user.id] -= price;
+      inventories[user.id].push('Recovery Potion');
+      return interaction.reply('Purchase approved. Recovery Potion added to registered assets.');
     }
 
-    balances[user.id] -= price;
-    inventories[user.id].push('Med Stim');
-
-    return interaction.reply('Purchase approved. Med Stim added to registered assets.');
+    return interaction.reply('MedPoint does not recognize that item.');
   }
 });
 
