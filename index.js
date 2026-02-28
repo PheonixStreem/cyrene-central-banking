@@ -43,6 +43,11 @@ const commands = [
       option.setName('user').setDescription('User').setRequired(true))
     .addStringOption(option =>
       option.setName('item').setDescription('Item name').setRequired(true)),
+
+  // 🏥 MEDPOINT DISPLAY
+  new SlashCommandBuilder()
+    .setName('medpoint')
+    .setDescription('View MedPoint medical inventory')
 ].map(cmd => cmd.toJSON());
 
 // ===== Register Commands =====
@@ -73,6 +78,20 @@ client.on('interactionCreate', async interaction => {
 
   if (!balances[user.id]) balances[user.id] = 0;
   if (!inventories[user.id]) inventories[user.id] = [];
+
+  // 🏥 MEDPOINT SHOP DISPLAY
+  if (commandName === 'medpoint') {
+    return interaction.reply(
+`**MedPoint Inventory**
+• Med Stim — 150 credits
+• Recovery Potion — 250 credits
+• Nanobot Healing Vials — 350 credits
+• Portable Blood-Toxin Filters — 180 credits
+• Oxygen Rebreather Mask — 220 credits
+• Detox Injector — 200 credits
+• Neural Stabilizer Shot — 300 credits`
+    );
+  }
 
   // BALANCE
   if (commandName === 'balance') {
