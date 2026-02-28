@@ -9,6 +9,19 @@ const client = new Client({
 });
 
 const balances = new Map();
+if (interaction.commandName === 'inventory') {
+  const inventory = getInventory(interaction.user.id);
+
+  if (Object.keys(inventory).length === 0) {
+    return interaction.reply('Your inventory is empty.');
+  }
+
+  const items = Object.entries(inventory)
+    .map(([item, qty]) => `${item}: ${qty}`)
+    .join('\n');
+
+  await interaction.reply(`Your inventory:\n${items}`);
+}
 
 function getBalance(userId) {
   if (!balances.has(userId)) {
