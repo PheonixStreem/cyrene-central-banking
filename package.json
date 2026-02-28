@@ -1,14 +1,13 @@
 {
   "name": "cyrene-central-banking",
   "version": "1.0.0",
-  "description": "Currency and asset bot for Cyrene RP server",
+  "description": "Cyberpunk economy bot",
   "main": "index.js",
-  "type": "commonjs",
   "scripts": {
     "start": "node index.js"
   },
   "dependencies": {
-    "discord.js": "^14.14.1"
+    "discord.js": "^14.14.1",
     "better-sqlite3": "^9.4.0"
   }
 }
