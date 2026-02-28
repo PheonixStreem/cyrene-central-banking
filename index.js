@@ -1,16 +1,10 @@
 require('dotenv').config();
 
 const { Client, GatewayIntentBits, SlashCommandBuilder, REST, Routes } = require('discord.js');
-const { createClient } = require('@supabase/supabase-js');
 
 console.log("Starting Cyrene Central Banking...");
-console.log("TOKEN exists:", !!process.env.TOKEN);
-console.log("SUPABASE_URL exists:", !!process.env.SUPABASE_URL);
 
-// Supabase
-const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_KEY);
-
-// Discord Client
+// Discord client
 const client = new Client({
   intents: [GatewayIntentBits.Guilds]
 });
@@ -20,8 +14,16 @@ client.once('clientReady', () => {
 });
 
 // =========================
-// MED SHOP ITEMS
+// IN-MEMORY STORAGE
 // =========================
+
+const balances = {};
+const inventories = {};
+
+// =========================
+// MED SHOP
+// =========================
+
 const medShop = {
   "Med Stim": 50,
   "Recovery Potion": 75,
@@ -32,55 +34,21 @@ const medShop = {
 };
 
 // =========================
-// DATABASE FUNCTIONS
+// HELPERS
 // =========================
 
-async function getBalance(userId) {
-  const { data } = await supabase
-    .from('balances')
-    .select('*')
-    .eq('user_id', userId)
-    .single();
-
-  if (!data) {
-    await supabase.from('balances').insert({ user_id: userId, credits: 300 });
-    return 300;
-  }
-
-  return data.credits;
+function getBalance(userId) {
+  if (!balances[userId]) balances[userId] = 300;
+  return balances[userId];
 }
 
-async function updateBalance(userId, amount) {
-  const balance = await getBalance(userId);
-  const newBalance = balance + amount;
-
-  await supabase
-    .from('balances')
-    .upsert({ user_id: userId, credits: newBalance });
-
-  return newBalance;
+function addCredits(userId, amount) {
+  balances[userId] = getBalance(userId) + amount;
 }
 
-async function addItem(userId, item, qty) {
-  for (let i = 0; i < qty; i++) {
-    await supabase.from('inventory').insert({ user_id: userId, item });
-  }
-}
-
-async function getInventory(userId) {
-  const { data } = await supabase
-    .from('inventory')
-    .select('item')
-    .eq('user_id', userId);
-
-  if (!data || data.length === 0) return [];
-
-  const counts = {};
-  data.forEach(row => {
-    counts[row.item] = (counts[row.item] || 0) + 1;
-  });
-
-  return counts;
+function addItem(userId, item, qty) {
+  if (!inventories[userId]) inventories[userId] = {};
+  inventories[userId][item] = (inventories[userId][item] || 0) + qty;
 }
 
 // =========================
@@ -92,27 +60,26 @@ client.on('interactionCreate', async interaction => {
 
   const userId = interaction.user.id;
 
-  // /balance
+  // BALANCE
   if (interaction.commandName === 'balance') {
-    const credits = await getBalance(userId);
-    return interaction.reply(`Balance: ${credits} credits`);
+    return interaction.reply(`Balance: ${getBalance(userId)} credits`);
   }
 
-  // /inventory
+  // INVENTORY
   if (interaction.commandName === 'inventory') {
-    const items = await getInventory(userId);
+    const inv = inventories[userId];
 
-    if (Object.keys(items).length === 0)
+    if (!inv || Object.keys(inv).length === 0)
       return interaction.reply("Inventory is empty.");
 
-    const list = Object.entries(items)
+    const list = Object.entries(inv)
       .map(([item, qty]) => `${item} x${qty}`)
       .join('\n');
 
     return interaction.reply(`Your Inventory:\n${list}`);
   }
 
-  // /medshop
+  // MEDSHOP
   if (interaction.commandName === 'medshop') {
     const list = Object.entries(medShop)
       .map(([item, price]) => `${item} — ${price} credits`)
@@ -121,31 +88,31 @@ client.on('interactionCreate', async interaction => {
     return interaction.reply(`Med Shop:\n${list}`);
   }
 
-  // /medbuy
+  // MEDBUY
   if (interaction.commandName === 'medbuy') {
     const item = interaction.options.getString('item');
     const qty = interaction.options.getInteger('quantity');
 
     if (!medShop[item]) {
-      return interaction.reply("Item not found in med shop.");
+      return interaction.reply("Item not found.");
     }
 
-    const totalCost = medShop[item] * qty;
-    const balance = await getBalance(userId);
+    const cost = medShop[item] * qty;
+    const balance = getBalance(userId);
 
-    if (balance < totalCost) {
-      return interaction.reply(`Insufficient credits. Need ${totalCost}, you have ${balance}.`);
+    if (balance < cost) {
+      return interaction.reply(`You need ${cost} credits but only have ${balance}.`);
     }
 
-    await updateBalance(userId, -totalCost);
-    await addItem(userId, item, qty);
+    addCredits(userId, -cost);
+    addItem(userId, item, qty);
 
-    return interaction.reply(`Purchased ${qty} ${item} for ${totalCost} credits.`);
+    return interaction.reply(`Purchased ${qty} ${item} for ${cost} credits.`);
   }
 });
 
 // =========================
-// REGISTER COMMANDS
+// SLASH COMMANDS
 // =========================
 
 const commands = [
@@ -159,21 +126,21 @@ const commands = [
 
   new SlashCommandBuilder()
     .setName('medshop')
-    .setDescription('View medical shop items'),
+    .setDescription('View medical shop'),
 
   new SlashCommandBuilder()
     .setName('medbuy')
     .setDescription('Buy medical items')
     .addStringOption(option =>
       option.setName('item')
-        .setDescription('Item name')
+        .setDescription('Item')
         .setRequired(true)
         .addChoices(
           ...Object.keys(medShop).map(name => ({ name, value: name }))
         ))
     .addIntegerOption(option =>
       option.setName('quantity')
-        .setDescription('Amount to buy')
+        .setDescription('Amount')
         .setRequired(true)
     )
 ].map(cmd => cmd.toJSON());
