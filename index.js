@@ -55,6 +55,11 @@ const commands = [
       option.setName('user').setDescription('User').setRequired(true))
     .addStringOption(option =>
       option.setName('item').setDescription('Item name').setRequired(true)),
+
+  // ✅ TEST JOIN COMMAND
+  new SlashCommandBuilder()
+    .setName('test-join')
+    .setDescription('Simulate new member join (testing)')
 ].map(cmd => cmd.toJSON());
 
 // =====================
@@ -112,6 +117,12 @@ client.on('interactionCreate', async interaction => {
 
   if (!balances[user.id]) balances[user.id] = 0;
   if (!inventories[user.id]) inventories[user.id] = [];
+
+  // TEST JOIN
+  if (commandName === 'test-join') {
+    balances[user.id] = 300;
+    return interaction.reply("Port Authority test: 300 credits issued.");
+  }
 
   // BALANCE
   if (commandName === 'balance') {
@@ -185,7 +196,6 @@ client.on('interactionCreate', async interaction => {
     const target = options.getUser('user');
     const item = options.getString('item');
 
-    if (!inventories[target.id]) inventories[target.id] = [];
     inventories[target.id] = inventories[target.id].filter(i => i !== item);
 
     return interaction.reply(
