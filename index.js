@@ -4,25 +4,13 @@ const token = process.env.BOT_TOKEN;
 const clientId = process.env.CLIENT_ID;
 const guildId = process.env.GUILD_ID;
 
-// =====================
-// Client Setup
-// =====================
-const client = new Client({
-  intents: [
-    GatewayIntentBits.Guilds,
-    GatewayIntentBits.GuildMembers
-  ]
-});
+const client = new Client({ intents: [GatewayIntentBits.Guilds] });
 
-// =====================
-// In-memory storage
-// =====================
+// ===== In-memory storage =====
 const balances = {};
 const inventories = {};
 
-// =====================
-// Slash Commands
-// =====================
+// ===== Slash Commands =====
 const commands = [
   new SlashCommandBuilder()
     .setName('balance')
@@ -55,16 +43,9 @@ const commands = [
       option.setName('user').setDescription('User').setRequired(true))
     .addStringOption(option =>
       option.setName('item').setDescription('Item name').setRequired(true)),
-
-  // ✅ TEST JOIN COMMAND
-  new SlashCommandBuilder()
-    .setName('test-join')
-    .setDescription('Simulate new member join (testing)')
 ].map(cmd => cmd.toJSON());
 
-// =====================
-// Register Commands
-// =====================
+// ===== Register Commands =====
 const rest = new REST({ version: '10' }).setToken(token);
 
 (async () => {
@@ -75,41 +56,16 @@ const rest = new REST({ version: '10' }).setToken(token);
     );
     console.log('Commands registered.');
   } catch (err) {
-    console.error('Command registration error:', err);
+    console.error(err);
   }
 })();
 
-// =====================
-// Bot Ready
-// =====================
+// ===== Bot Ready =====
 client.once('ready', () => {
   console.log(`Online as ${client.user.tag}`);
 });
 
-// =====================
-// New Member Credits
-// =====================
-client.on('guildMemberAdd', member => {
-  if (!balances[member.id]) {
-    balances[member.id] = 300;
-
-    const channel = member.guild.channels.cache.find(
-      c => c.name === "city-entry-notices"
-    );
-
-    if (channel) {
-      channel.send(
-        `Port Authority has issued **300 credits** to ${member.user.username}. Welcome to Cyrene.`
-      );
-    } else {
-      console.log("Channel #city-entry-notices not found.");
-    }
-  }
-});
-
-// =====================
-// Command Handling
-// =====================
+// ===== Command Handling =====
 client.on('interactionCreate', async interaction => {
   if (!interaction.isChatInputCommand()) return;
 
@@ -117,12 +73,6 @@ client.on('interactionCreate', async interaction => {
 
   if (!balances[user.id]) balances[user.id] = 0;
   if (!inventories[user.id]) inventories[user.id] = [];
-
-  // TEST JOIN
-  if (commandName === 'test-join') {
-    balances[user.id] = 300;
-    return interaction.reply("Port Authority test: 300 credits issued.");
-  }
 
   // BALANCE
   if (commandName === 'balance') {
