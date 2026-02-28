@@ -4,13 +4,25 @@ const token = process.env.BOT_TOKEN;
 const clientId = process.env.CLIENT_ID;
 const guildId = process.env.GUILD_ID;
 
-const client = new Client({ intents: [GatewayIntentBits.Guilds] });
+// =====================
+// Client Setup
+// =====================
+const client = new Client({
+  intents: [
+    GatewayIntentBits.Guilds,
+    GatewayIntentBits.GuildMembers // needed for join credits
+  ]
+});
 
-// ===== In-memory storage =====
+// =====================
+// In-memory storage
+// =====================
 const balances = {};
 const inventories = {};
 
-// ===== Slash Commands =====
+// =====================
+// Slash Commands
+// =====================
 const commands = [
   new SlashCommandBuilder()
     .setName('balance')
@@ -34,7 +46,7 @@ const commands = [
 
   new SlashCommandBuilder()
     .setName('inventory')
-    .setDescription('View your inventory'),
+    .setDescription('View your registered assets'),
 
   new SlashCommandBuilder()
     .setName('remove-item')
@@ -45,7 +57,9 @@ const commands = [
       option.setName('item').setDescription('Item name').setRequired(true)),
 ].map(cmd => cmd.toJSON());
 
-// ===== Register Commands =====
+// =====================
+// Register Commands
+// =====================
 const rest = new REST({ version: '10' }).setToken(token);
 
 (async () => {
@@ -56,16 +70,36 @@ const rest = new REST({ version: '10' }).setToken(token);
     );
     console.log('Commands registered.');
   } catch (err) {
-    console.error(err);
+    console.error('Command registration error:', err);
   }
 })();
 
-// ===== Bot Ready =====
+// =====================
+// Bot Ready
+// =====================
 client.once('ready', () => {
   console.log(`Online as ${client.user.tag}`);
 });
 
-// ===== Command Handling =====
+// =====================
+// New Member Credits
+// =====================
+client.on('guildMemberAdd', member => {
+  if (!balances[member.id]) {
+    balances[member.id] = 300;
+
+    const channel = member.guild.systemChannel;
+    if (channel) {
+      channel.send(
+        `Port Authority has issued **300 credits** to ${member.user.username}. Welcome to Cyrene.`
+      );
+    }
+  }
+});
+
+// =====================
+// Command Handling
+// =====================
 client.on('interactionCreate', async interaction => {
   if (!interaction.isChatInputCommand()) return;
 
@@ -83,6 +117,13 @@ client.on('interactionCreate', async interaction => {
 
   // GIVE
   if (commandName === 'give') {
+    const member = interaction.member;
+    const hasRole = member.roles.cache.some(role => role.name === "Port Authority");
+
+    if (!hasRole) {
+      return interaction.reply("Access denied. Central Banking recognizes no authority.");
+    }
+
     const target = options.getUser('user');
     const amount = options.getInteger('amount');
 
@@ -96,6 +137,13 @@ client.on('interactionCreate', async interaction => {
 
   // GRANT ITEM
   if (commandName === 'grant-item') {
+    const member = interaction.member;
+    const hasRole = member.roles.cache.some(role => role.name === "Port Authority");
+
+    if (!hasRole) {
+      return interaction.reply("Access denied. Central Banking recognizes no authority.");
+    }
+
     const target = options.getUser('user');
     const item = options.getString('item');
 
@@ -122,11 +170,17 @@ client.on('interactionCreate', async interaction => {
 
   // REMOVE ITEM
   if (commandName === 'remove-item') {
+    const member = interaction.member;
+    const hasRole = member.roles.cache.some(role => role.name === "Port Authority");
+
+    if (!hasRole) {
+      return interaction.reply("Access denied. Central Banking recognizes no authority.");
+    }
+
     const target = options.getUser('user');
     const item = options.getString('item');
 
     if (!inventories[target.id]) inventories[target.id] = [];
-
     inventories[target.id] = inventories[target.id].filter(i => i !== item);
 
     return interaction.reply(
@@ -137,5 +191,5 @@ client.on('interactionCreate', async interaction => {
 
 client.login(token);
 
-// Prevent Render from exiting
+// Prevent Render worker from exiting
 setInterval(() => {}, 1000 * 60 * 60);
