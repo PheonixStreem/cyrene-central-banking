@@ -12,18 +12,9 @@ const inventories = {};
 
 // ===== Commands =====
 const commands = [
-  new SlashCommandBuilder()
-    .setName('balance')
-    .setDescription('Check your credits'),
-
-  new SlashCommandBuilder()
-    .setName('inventory')
-    .setDescription('View your registered assets'),
-
-  new SlashCommandBuilder()
-    .setName('medpoint')
-    .setDescription('View MedPoint medical inventory'),
-
+  new SlashCommandBuilder().setName('balance').setDescription('Check your credits'),
+  new SlashCommandBuilder().setName('inventory').setDescription('View your registered assets'),
+  new SlashCommandBuilder().setName('medpoint').setDescription('View MedPoint medical inventory'),
   new SlashCommandBuilder()
     .setName('buy')
     .setDescription('Buy a MedPoint item')
@@ -38,13 +29,10 @@ const rest = new REST({ version: '10' }).setToken(token);
 
 (async () => {
   try {
-    await rest.put(
-      Routes.applicationGuildCommands(clientId, guildId),
-      { body: commands }
-    );
+    await rest.put(Routes.applicationGuildCommands(clientId, guildId), { body: commands });
     console.log('Commands registered.');
   } catch (err) {
-    console.error(err);
+    console.error('Command registration error:', err);
   }
 })();
 
@@ -52,36 +40,32 @@ client.once('ready', () => {
   console.log(`Online as ${client.user.tag}`);
 });
 
-// ===== Command Handling =====
+// ===== Safe Interaction Handler =====
 client.on('interactionCreate', async interaction => {
   if (!interaction.isChatInputCommand()) return;
 
-  const { commandName, user, options } = interaction;
+  try {
+    const { commandName, user, options } = interaction;
 
-  if (!balances[user.id]) balances[user.id] = 500;
-  if (!inventories[user.id]) inventories[user.id] = [];
+    if (!balances[user.id]) balances[user.id] = 500;
+    if (!inventories[user.id]) inventories[user.id] = [];
 
-  // BALANCE
-  if (commandName === 'balance') {
-    return interaction.reply(
-      `Central Banking confirms a balance of **${balances[user.id]} credits**.`
-    );
-  }
-
-  // INVENTORY
-  if (commandName === 'inventory') {
-    if (!inventories[user.id].length) {
-      return interaction.reply('No registered assets.');
+    // BALANCE
+    if (commandName === 'balance') {
+      return interaction.reply(`Central Banking confirms a balance of **${balances[user.id]} credits**.`);
     }
 
-    return interaction.reply(
-      `Registered Assets:\n• ${inventories[user.id].join('\n• ')}`
-    );
-  }
+    // INVENTORY
+    if (commandName === 'inventory') {
+      if (!inventories[user.id].length) {
+        return interaction.reply('No registered assets.');
+      }
+      return interaction.reply(`Registered Assets:\n• ${inventories[user.id].join('\n• ')}`);
+    }
 
-  // MEDPOINT DISPLAY
-  if (commandName === 'medpoint') {
-    return interaction.reply(
+    // MEDPOINT
+    if (commandName === 'medpoint') {
+      return interaction.reply(
 `**MedPoint Inventory**
 • Med Stim — 150 credits
 • Recovery Potion — 250 credits
@@ -90,32 +74,41 @@ client.on('interactionCreate', async interaction => {
 • Oxygen Rebreather Mask — 220 credits
 • Detox Injector — 200 credits
 • Neural Stabilizer Shot — 300 credits`
-    );
-  }
-
-  // BUY ITEMS
-  if (commandName === 'buy') {
-    const item = options.getString('item').toLowerCase();
-
-    // 🩺 MED STIM
-    if (item === 'medstim' || item === 'med stim') {
-      const price = 150;
-      if (balances[user.id] < price) return interaction.reply('Insufficient credits.');
-      balances[user.id] -= price;
-      inventories[user.id].push('Med Stim');
-      return interaction.reply('Purchase approved. Med Stim added to registered assets.');
+      );
     }
 
-    // 💊 RECOVERY POTION
-    if (item === 'recovery' || item === 'recovery potion') {
-      const price = 250;
-      if (balances[user.id] < price) return interaction.reply('Insufficient credits.');
-      balances[user.id] -= price;
-      inventories[user.id].push('Recovery Potion');
-      return interaction.reply('Purchase approved. Recovery Potion added to registered assets.');
+    // BUY
+    if (commandName === 'buy') {
+      const item = options.getString('item').toLowerCase();
+
+      // MED STIM
+      if (item === 'medstim' || item === 'med stim') {
+        const price = 150;
+        if (balances[user.id] < price) return interaction.reply('Insufficient credits.');
+        balances[user.id] -= price;
+        inventories[user.id].push('Med Stim');
+        return interaction.reply('Purchase approved. Med Stim added to registered assets.');
+      }
+
+      // RECOVERY POTION
+      if (item === 'recovery' || item === 'recovery potion') {
+        const price = 250;
+        if (balances[user.id] < price) return interaction.reply('Insufficient credits.');
+        balances[user.id] -= price;
+        inventories[user.id].push('Recovery Potion');
+        return interaction.reply('Purchase approved. Recovery Potion added to registered assets.');
+      }
+
+      return interaction.reply('MedPoint does not recognize that item.');
     }
 
-    return interaction.reply('MedPoint does not recognize that item.');
+  } catch (error) {
+    console.error('Interaction error:', error);
+    if (interaction.replied || interaction.deferred) {
+      await interaction.followUp('An error occurred.');
+    } else {
+      await interaction.reply('An error occurred.');
+    }
   }
 });
 
