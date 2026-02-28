@@ -6,81 +6,46 @@ const guildId = process.env.GUILD_ID;
 
 const client = new Client({ intents: [GatewayIntentBits.Guilds] });
 
-// ===== In-memory storage =====
+// ===== Storage =====
 const balances = {};
 const inventories = {};
 
-// ===== MedPoint Shop =====
+// ===== MedPoint Items =====
 const medpointItems = {
-  "Med Stim": 150,
-  "Recovery Potion": 250,
-  "Nanobot Healing Vials": 350,
-  "Portable Blood-Toxin Filters": 180,
-  "Oxygen Rebreather Mask": 220,
-  "Detox Injector": 200,
-  "Neural Stabilizer Shot": 300
+  "med stim": { name: "Med Stim", price: 150 },
+  "recovery potion": { name: "Recovery Potion", price: 250 },
+  "nanobot healing vials": { name: "Nanobot Healing Vials", price: 350 },
+  "blood toxin filter": { name: "Portable Blood-Toxin Filters", price: 180 },
+  "oxygen mask": { name: "Oxygen Rebreather Mask", price: 220 },
+  "detox injector": { name: "Detox Injector", price: 200 },
+  "neural stabilizer": { name: "Neural Stabilizer Shot", price: 300 }
 };
 
-// ===== Slash Commands =====
+// ===== Commands =====
 const commands = [
   new SlashCommandBuilder()
     .setName('balance')
     .setDescription('Check your credits'),
 
   new SlashCommandBuilder()
-    .setName('give')
-    .setDescription('Give credits to a user')
-    .addUserOption(option =>
-      option.setName('user').setDescription('User').setRequired(true))
-    .addIntegerOption(option =>
-      option.setName('amount').setDescription('Amount').setRequired(true)),
-
-  new SlashCommandBuilder()
-    .setName('grant-item')
-    .setDescription('Register an asset to a user')
-    .addUserOption(option =>
-      option.setName('user').setDescription('User').setRequired(true))
-    .addStringOption(option =>
-      option.setName('item').setDescription('Item name').setRequired(true)),
-
-  new SlashCommandBuilder()
-    .setName('inventory')
-    .setDescription('View your registered assets'),
-
-  new SlashCommandBuilder()
-    .setName('remove-item')
-    .setDescription('Remove an asset from a user')
-    .addUserOption(option =>
-      option.setName('user').setDescription('User').setRequired(true))
-    .addStringOption(option =>
-      option.setName('item').setDescription('Item name').setRequired(true)),
-
-  // 🏥 MEDPOINT DISPLAY
-  new SlashCommandBuilder()
     .setName('medpoint')
-    .setDescription('View MedPoint medical inventory'),
+    .setDescription('View MedPoint inventory'),
 
-  // 🛒 MEDBUY (Dropdown Items)
   new SlashCommandBuilder()
-    .setName('medbuy')
+    .setName('buy')
     .setDescription('Purchase an item from MedPoint')
     .addStringOption(option =>
       option.setName('item')
-        .setDescription('Select item')
-        .setRequired(true)
-        .addChoices(
-          { name: 'Med Stim', value: 'Med Stim' },
-          { name: 'Recovery Potion', value: 'Recovery Potion' },
-          { name: 'Nanobot Healing Vials', value: 'Nanobot Healing Vials' },
-          { name: 'Portable Blood-Toxin Filters', value: 'Portable Blood-Toxin Filters' },
-          { name: 'Oxygen Rebreather Mask', value: 'Oxygen Rebreather Mask' },
-          { name: 'Detox Injector', value: 'Detox Injector' },
-          { name: 'Neural Stabilizer Shot', value: 'Neural Stabilizer Shot' }
-        ))
+        .setDescription('Item name (flexible)')
+        .setRequired(true))
     .addIntegerOption(option =>
       option.setName('quantity')
         .setDescription('Amount to purchase')
-        .setRequired(true))
+        .setRequired(true)),
+
+  new SlashCommandBuilder()
+    .setName('inventory')
+    .setDescription('View your registered assets')
 ].map(cmd => cmd.toJSON());
 
 // ===== Register Commands =====
@@ -108,25 +73,33 @@ client.on('interactionCreate', async interaction => {
 
   const { commandName, user, options } = interaction;
 
-  if (!balances[user.id]) balances[user.id] = 0;
+  if (!balances[user.id]) balances[user.id] = 500; // starter credits for testing
   if (!inventories[user.id]) inventories[user.id] = [];
 
-  // 🏥 MEDPOINT DISPLAY
+  // SHOW MEDPOINT
   if (commandName === 'medpoint') {
-    const list = Object.entries(medpointItems)
-      .map(([name, price]) => `• ${name} — ${price} credits`)
+    const list = Object.values(medpointItems)
+      .map(item => `• ${item.name} — ${item.price} credits`)
       .join('\n');
 
     return interaction.reply(`**MedPoint Inventory**\n${list}`);
   }
 
-  // 🛒 MEDBUY
-  if (commandName === 'medbuy') {
-    const item = options.getString('item');
+  // FLEXIBLE BUY
+  if (commandName === 'buy') {
+    const input = options.getString('item').toLowerCase();
     const quantity = options.getInteger('quantity');
 
-    const price = medpointItems[item];
-    const totalCost = price * quantity;
+    const match = Object.keys(medpointItems).find(key =>
+      input.includes(key) || key.includes(input)
+    );
+
+    if (!match) {
+      return interaction.reply("MedPoint doesn't recognize that item.");
+    }
+
+    const item = medpointItems[match];
+    const totalCost = item.price * quantity;
 
     if (balances[user.id] < totalCost) {
       return interaction.reply("Insufficient credits.");
@@ -135,11 +108,11 @@ client.on('interactionCreate', async interaction => {
     balances[user.id] -= totalCost;
 
     for (let i = 0; i < quantity; i++) {
-      inventories[user.id].push(item);
+      inventories[user.id].push(item.name);
     }
 
     return interaction.reply(
-      `Purchase approved. ${quantity} × ${item} added to registered assets.`
+      `Purchase approved. ${quantity} × ${item.name} added to registered assets.`
     );
   }
 
@@ -147,45 +120,6 @@ client.on('interactionCreate', async interaction => {
   if (commandName === 'balance') {
     return interaction.reply(
       `Central Banking confirms a balance of **${balances[user.id]} credits**.`
-    );
-  }
-
-  // GIVE
-  if (commandName === 'give') {
-    const member = interaction.member;
-    const hasRole = member.roles.cache.some(role => role.name === "Port Authority");
-
-    if (!hasRole) {
-      return interaction.reply("Access denied. Central Banking recognizes no authority.");
-    }
-
-    const target = options.getUser('user');
-    const amount = options.getInteger('amount');
-
-    if (!balances[target.id]) balances[target.id] = 0;
-    balances[target.id] += amount;
-
-    return interaction.reply(
-      `Port Authority authorized a disbursement of **${amount} credits** to ${target.username}.`
-    );
-  }
-
-  // GRANT ITEM
-  if (commandName === 'grant-item') {
-    const member = interaction.member;
-    const hasRole = member.roles.cache.some(role => role.name === "Port Authority");
-
-    if (!hasRole) {
-      return interaction.reply("Access denied. Central Banking recognizes no authority.");
-    }
-
-    const target = options.getUser('user');
-    const item = options.getString('item');
-
-    inventories[target.id].push(item);
-
-    return interaction.reply(
-      `Asset registered to ${target.username}: **${item}**`
     );
   }
 
@@ -199,28 +133,7 @@ client.on('interactionCreate', async interaction => {
       `Registered Assets:\n• ${inventories[user.id].join('\n• ')}`
     );
   }
-
-  // REMOVE ITEM
-  if (commandName === 'remove-item') {
-    const member = interaction.member;
-    const hasRole = member.roles.cache.some(role => role.name === "Port Authority");
-
-    if (!hasRole) {
-      return interaction.reply("Access denied. Central Banking recognizes no authority.");
-    }
-
-    const target = options.getUser('user');
-    const item = options.getString('item');
-
-    inventories[target.id] = inventories[target.id].filter(i => i !== item);
-
-    return interaction.reply(
-      `Asset removed from ${target.username}: **${item}**`
-    );
-  }
 });
 
 client.login(token);
-
-// Prevent Render worker from exiting
 setInterval(() => {}, 1000 * 60 * 60);
