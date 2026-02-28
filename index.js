@@ -1,53 +1,26 @@
 const { Client, GatewayIntentBits, SlashCommandBuilder, REST, Routes, PermissionsBitField } = require('discord.js');
 
-const TOKEN = process.env.DISCORD_TOKEN;
+const TOKEN = process.env.TOKEN;
 const CLIENT_ID = process.env.CLIENT_ID;
 const GUILD_ID = process.env.GUILD_ID;
 
 const client = new Client({
-  intents: [GatewayIntentBits.Guilds]
+  intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMembers]
 });
 
-// In-memory storage
-const balances = {};
-const inventory = {};
+const balances = new Map();
 
-// Starter credits
-function ensureUser(userId) {
-  if (!balances[userId]) balances[userId] = 300;
-  if (!inventory[userId]) inventory[userId] = [];
+function getBalance(userId) {
+  if (!balances.has(userId)) {
+    balances.set(userId, 300);
+  }
+  return balances.get(userId);
 }
 
-// Med shop items
-const medShop = {
-  "med stim": 50,
-  "recovery potion": 75,
-  "nanobot healing vial": 120,
-  "detox injector": 90,
-  "oxygen rebreather mask": 140
-};
-
-// Slash commands
 const commands = [
   new SlashCommandBuilder()
     .setName('balance')
-    .setDescription('Check your credit balance'),
-
-  new SlashCommandBuilder()
-    .setName('medshop')
-    .setDescription('View medical shop items'),
-
-  new SlashCommandBuilder()
-    .setName('buy')
-    .setDescription('Buy an item from the med shop')
-    .addStringOption(option =>
-      option.setName('item')
-        .setDescription('Item name')
-        .setRequired(true))
-    .addIntegerOption(option =>
-      option.setName('amount')
-        .setDescription('How many to buy')
-        .setRequired(false)),
+    .setDescription('Check your credits'),
 
   new SlashCommandBuilder()
     .setName('give')
@@ -62,78 +35,49 @@ const commands = [
         .setRequired(true))
 ].map(cmd => cmd.toJSON());
 
-// Register commands
-client.once('ready', async () => {
+const rest = new REST({ version: '10' }).setToken(TOKEN);
+
+(async () => {
+  try {
+    await rest.put(
+      Routes.applicationGuildCommands(CLIENT_ID, GUILD_ID),
+      { body: commands }
+    );
+    console.log('Commands registered.');
+  } catch (err) {
+    console.error(err);
+  }
+})();
+
+client.once('clientReady', () => {
   console.log(`Online as ${client.user.tag}`);
-
-  const rest = new REST({ version: '10' }).setToken(TOKEN);
-
-  await rest.put(
-    Routes.applicationGuildCommands(CLIENT_ID, GUILD_ID),
-    { body: commands }
-  );
-
-  console.log('Commands registered.');
 });
 
-// Command handling
+client.on('guildMemberAdd', member => {
+  balances.set(member.id, 300);
+});
+
 client.on('interactionCreate', async interaction => {
   if (!interaction.isChatInputCommand()) return;
 
-  const userId = interaction.user.id;
-  ensureUser(userId);
-
-  // BALANCE
   if (interaction.commandName === 'balance') {
-    return interaction.reply(`Balance: ${balances[userId]} credits`);
+    const credits = getBalance(interaction.user.id);
+    await interaction.reply(`Balance: ${credits} credits`);
   }
 
-  // MED SHOP
-  if (interaction.commandName === 'medshop') {
-    let shopText = "**Medical Shop**\n";
-    for (const item in medShop) {
-      shopText += `• ${item} — ${medShop[item]} credits\n`;
-    }
-    return interaction.reply(shopText);
-  }
-
-  // BUY
-  if (interaction.commandName === 'buy') {
-    const itemName = interaction.options.getString('item').toLowerCase();
-    const amount = interaction.options.getInteger('amount') || 1;
-
-    if (!medShop[itemName]) {
-      return interaction.reply(`Item not found: ${itemName}`);
-    }
-
-    const totalCost = medShop[itemName] * amount;
-
-    if (balances[userId] < totalCost) {
-      return interaction.reply(`Not enough credits. Need ${totalCost}.`);
-    }
-
-    balances[userId] -= totalCost;
-
-    for (let i = 0; i < amount; i++) {
-      inventory[userId].push(itemName);
-    }
-
-    return interaction.reply(`Purchased ${amount} ${itemName}(s) for ${totalCost} credits.`);
-  }
-
-  // GIVE (ADMIN ONLY)
   if (interaction.commandName === 'give') {
+    // Admin permission check
     if (!interaction.member.permissions.has(PermissionsBitField.Flags.Administrator)) {
-      return interaction.reply({ content: "Admin only.", ephemeral: true });
+      return interaction.reply({ content: 'You do not have permission.', ephemeral: true });
     }
 
-    const target = interaction.options.getUser('user');
+    const user = interaction.options.getUser('user');
     const amount = interaction.options.getInteger('amount');
 
-    ensureUser(target.id);
-    balances[target.id] += amount;
+    const newBalance = getBalance(user.id) + amount;
+    balances.set(user.id, newBalance);
 
-    return interaction.reply(`Gave ${amount} credits to ${target.username}.`);
+    await interaction.reply(`Gave ${amount} credits to ${user.tag}. New balance: ${newBalance}`);
   }
 });
 
