@@ -60,14 +60,23 @@ const commands = [
     .setName('medpoint')
     .setDescription('View MedPoint medical inventory'),
 
-  // 🛒 BUY COMMAND
+  // 🛒 BUY (Dropdown Items)
   new SlashCommandBuilder()
     .setName('buy')
     .setDescription('Purchase an item from MedPoint')
     .addStringOption(option =>
       option.setName('item')
-        .setDescription('Item name')
-        .setRequired(true))
+        .setDescription('Select item')
+        .setRequired(true)
+        .addChoices(
+          { name: 'Med Stim', value: 'Med Stim' },
+          { name: 'Recovery Potion', value: 'Recovery Potion' },
+          { name: 'Nanobot Healing Vials', value: 'Nanobot Healing Vials' },
+          { name: 'Portable Blood-Toxin Filters', value: 'Portable Blood-Toxin Filters' },
+          { name: 'Oxygen Rebreather Mask', value: 'Oxygen Rebreather Mask' },
+          { name: 'Detox Injector', value: 'Detox Injector' },
+          { name: 'Neural Stabilizer Shot', value: 'Neural Stabilizer Shot' }
+        ))
     .addIntegerOption(option =>
       option.setName('quantity')
         .setDescription('Amount to purchase')
@@ -102,7 +111,7 @@ client.on('interactionCreate', async interaction => {
   if (!balances[user.id]) balances[user.id] = 0;
   if (!inventories[user.id]) inventories[user.id] = [];
 
-  // MEDPOINT DISPLAY
+  // 🏥 MEDPOINT DISPLAY
   if (commandName === 'medpoint') {
     const list = Object.entries(medpointItems)
       .map(([name, price]) => `• ${name} — ${price} credits`)
@@ -111,17 +120,12 @@ client.on('interactionCreate', async interaction => {
     return interaction.reply(`**MedPoint Inventory**\n${list}`);
   }
 
-  // BUY ITEMS
+  // 🛒 BUY ITEMS
   if (commandName === 'buy') {
     const item = options.getString('item');
     const quantity = options.getInteger('quantity');
 
     const price = medpointItems[item];
-
-    if (!price) {
-      return interaction.reply("Item not found at MedPoint.");
-    }
-
     const totalCost = price * quantity;
 
     if (balances[user.id] < totalCost) {
@@ -146,7 +150,7 @@ client.on('interactionCreate', async interaction => {
     );
   }
 
-  // GIVE
+  // GIVE (Port Authority only)
   if (commandName === 'give') {
     const member = interaction.member;
     const hasRole = member.roles.cache.some(role => role.name === "Port Authority");
@@ -166,7 +170,7 @@ client.on('interactionCreate', async interaction => {
     );
   }
 
-  // GRANT ITEM
+  // GRANT ITEM (Port Authority only)
   if (commandName === 'grant-item') {
     const member = interaction.member;
     const hasRole = member.roles.cache.some(role => role.name === "Port Authority");
@@ -196,7 +200,7 @@ client.on('interactionCreate', async interaction => {
     );
   }
 
-  // REMOVE ITEM
+  // REMOVE ITEM (Port Authority only)
   if (commandName === 'remove-item') {
     const member = interaction.member;
     const hasRole = member.roles.cache.some(role => role.name === "Port Authority");
