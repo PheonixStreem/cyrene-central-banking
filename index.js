@@ -1,178 +1,152 @@
-const { Client, GatewayIntentBits, REST, Routes, SlashCommandBuilder } = require('discord.js');
-const Database = require('better-sqlite3');
+import { Client, GatewayIntentBits, SlashCommandBuilder, REST, Routes } from 'discord.js';
+import { createClient } from '@supabase/supabase-js';
 
-const token = process.env.BOT_TOKEN;
-const clientId = process.env.CLIENT_ID;
-const guildId = process.env.GUILD_ID;
+const client = new Client({
+  intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMembers]
+});
 
-// ===== DATABASE SETUP =====
-const db = new Database('economy.db');
+// ===== SUPABASE =====
+const supabase = createClient(
+  process.env.SUPABASE_URL,
+  process.env.SUPABASE_KEY
+);
 
-// Create tables if they don't exist
-db.prepare(`
-  CREATE TABLE IF NOT EXISTS balances (
-    userId TEXT PRIMARY KEY,
-    credits INTEGER
-  )
-`).run();
-
-db.prepare(`
-  CREATE TABLE IF NOT EXISTS inventory (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    userId TEXT,
-    item TEXT
-  )
-`).run();
-
-const client = new Client({ intents: [GatewayIntentBits.Guilds] });
+// ===== MED SHOP ITEMS =====
+const medShop = {
+  "med stim": 50,
+  "recovery potion": 75,
+  "nanobot healing vial": 120,
+  "oxygen rebreather mask": 90,
+  "detox injector": 60,
+  "neural stabilizer shot": 110
+};
 
 // ===== COMMANDS =====
 const commands = [
   new SlashCommandBuilder().setName('balance').setDescription('Check your credits'),
-  new SlashCommandBuilder().setName('inventory').setDescription('View your registered assets'),
-  new SlashCommandBuilder().setName('medpoint').setDescription('View MedPoint medical inventory'),
+  new SlashCommandBuilder().setName('inventory').setDescription('View your inventory'),
   new SlashCommandBuilder()
-    .setName('buy')
-    .setDescription('Buy a MedPoint item')
-    .addStringOption(option =>
-      option.setName('item')
+    .setName('medshop')
+    .setDescription('View medical shop items'),
+  new SlashCommandBuilder()
+    .setName('medbuy')
+    .setDescription('Buy medical items')
+    .addStringOption(opt =>
+      opt.setName('item')
         .setDescription('Item name')
         .setRequired(true))
-].map(cmd => cmd.toJSON());
+    .addIntegerOption(opt =>
+      opt.setName('amount')
+        .setDescription('Amount to buy')
+        .setRequired(true))
+];
 
 // ===== REGISTER COMMANDS =====
-const rest = new REST({ version: '10' }).setToken(token);
-
-(async () => {
-  try {
-    await rest.put(Routes.applicationGuildCommands(clientId, guildId), { body: commands });
-    console.log('Commands registered.');
-  } catch (err) {
-    console.error(err);
-  }
-})();
-
-client.once('ready', () => {
+client.once('ready', async () => {
   console.log(`Online as ${client.user.tag}`);
+
+  const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);
+
+  await rest.put(
+    Routes.applicationCommands(client.user.id),
+    { body: commands }
+  );
+
+  console.log('Commands registered.');
 });
 
-// ===== HELPER FUNCTIONS =====
-function ensureUser(userId) {
-  const user = db.prepare('SELECT credits FROM balances WHERE userId = ?').get(userId);
-  if (!user) {
-    db.prepare('INSERT INTO balances (userId, credits) VALUES (?, ?)').run(userId, 500);
+// ===== NEW USER DEFAULT BALANCE =====
+async function ensureUser(userId) {
+  const { data } = await supabase
+    .from('balances')
+    .select('*')
+    .eq('user_id', userId)
+    .single();
+
+  if (!data) {
+    await supabase.from('balances').insert({ user_id: userId, credits: 300 });
   }
-}
-
-function getBalance(userId) {
-  return db.prepare('SELECT credits FROM balances WHERE userId = ?').get(userId).credits;
-}
-
-function deductCredits(userId, amount) {
-  db.prepare('UPDATE balances SET credits = credits - ? WHERE userId = ?')
-    .run(amount, userId);
-}
-
-function addItem(userId, item) {
-  db.prepare('INSERT INTO inventory (userId, item) VALUES (?, ?)').run(userId, item);
-}
-
-function getInventory(userId) {
-  return db.prepare('SELECT item FROM inventory WHERE userId = ?').all(userId);
 }
 
 // ===== COMMAND HANDLER =====
 client.on('interactionCreate', async interaction => {
   if (!interaction.isChatInputCommand()) return;
 
-  try {
-    const { commandName, user, options } = interaction;
-    const userId = user.id;
+  const userId = interaction.user.id;
+  await ensureUser(userId);
 
-    ensureUser(userId);
+  // ===== BALANCE =====
+  if (interaction.commandName === 'balance') {
+    const { data } = await supabase
+      .from('balances')
+      .select('credits')
+      .eq('user_id', userId)
+      .single();
 
-    // BALANCE
-    if (commandName === 'balance') {
-      const balance = getBalance(userId);
-      return interaction.reply(
-        `Central Banking confirms a balance of **${balance} credits**.`
-      );
+    return interaction.reply(`Central Banking confirms a balance of **${data.credits} credits**.`);
+  }
+
+  // ===== INVENTORY =====
+  if (interaction.commandName === 'inventory') {
+    const { data } = await supabase
+      .from('inventory')
+      .select('item')
+      .eq('user_id', userId);
+
+    if (!data || data.length === 0) {
+      return interaction.reply('No registered assets.');
     }
 
-    // INVENTORY
-    if (commandName === 'inventory') {
-      const items = getInventory(userId);
+    const items = data.map(i => `• ${i.item}`).join('\n');
+    return interaction.reply(`Registered Assets:\n${items}`);
+  }
 
-      if (!items.length) {
-        return interaction.reply('No registered assets.');
-      }
+  // ===== MED SHOP =====
+  if (interaction.commandName === 'medshop') {
+    const list = Object.entries(medShop)
+      .map(([item, price]) => `• ${item} — ${price} credits`)
+      .join('\n');
 
-      const list = items.map(i => i.item).join('\n• ');
-      return interaction.reply(`Registered Assets:\n• ${list}`);
+    return interaction.reply(`🩺 **Cyrene Medical Supply**\n${list}`);
+  }
+
+  // ===== BUY MED ITEM =====
+  if (interaction.commandName === 'medbuy') {
+    const itemName = interaction.options.getString('item').toLowerCase();
+    const amount = interaction.options.getInteger('amount');
+
+    if (!medShop[itemName]) {
+      return interaction.reply('Item not found in medical shop.');
     }
 
-    // MEDPOINT DISPLAY
-    if (commandName === 'medpoint') {
-      return interaction.reply(
-`**MedPoint Inventory**
-• Med Stim — 150 credits
-• Recovery Potion — 250 credits
-• Detox Injector — 200 credits`
-      );
+    const totalCost = medShop[itemName] * amount;
+
+    const { data } = await supabase
+      .from('balances')
+      .select('credits')
+      .eq('user_id', userId)
+      .single();
+
+    if (data.credits < totalCost) {
+      return interaction.reply('Insufficient credits.');
     }
 
-    // BUY ITEMS
-    if (commandName === 'buy') {
-      const item = options.getString('item').toLowerCase();
+    // Deduct credits
+    await supabase
+      .from('balances')
+      .update({ credits: data.credits - totalCost })
+      .eq('user_id', userId);
 
-      // MED STIM
-      if (item === 'medstim' || item === 'med stim') {
-        const price = 150;
-        if (getBalance(userId) < price) return interaction.reply('Insufficient credits.');
-        deductCredits(userId, price);
-        addItem(userId, 'Med Stim');
-        return interaction.reply('Purchase approved. Med Stim added to registered assets.');
-      }
-
-      // RECOVERY POTION
-      if (item === 'recovery potion' || item === 'recovery potion') {
-        const price = 250;
-        if (getBalance(userId) < price) return interaction.reply('Insufficient credits.');
-        deductCredits(userId, price);
-        addItem(userId, 'Recovery Potion');
-        return interaction.reply('Purchase approved. Recovery Potion added to registered assets.');
-      }
-
-      // DETOX INJECTOR
-      if (item === 'detox injector' || item === 'detox injector') {
-        const price = 200;
-        if (getBalance(userId) < price) return interaction.reply('Insufficient credits.');
-        deductCredits(userId, price);
-        addItem(userId, 'Detox Injector');
-        return interaction.reply('Purchase approved. Detox Injector added to registered assets.');
-      }
-
-      return interaction.reply('MedPoint does not recognize that item.');
+    // Add items
+    for (let i = 0; i < amount; i++) {
+      await supabase.from('inventory').insert({
+        user_id: userId,
+        item: itemName
+      });
     }
-    
-// OXYGEN REBREATHER MASK
-if (item === 'oxygen' || item === 'oxygen mask' || item === 'rebreather') {
-  const price = 220;
-  if (getBalance(userId) < price) return interaction.reply('Insufficient credits.');
-  deductCredits(userId, price);
-  addItem(userId, 'Oxygen Rebreather Mask');
-  return interaction.reply('Purchase approved. Oxygen Rebreather Mask added to registered assets.');
-}
-    
-  } catch (error) {
-    console.error('Interaction error:', error);
-    if (interaction.replied || interaction.deferred) {
-      await interaction.followUp('An error occurred.');
-    } else {
-      await interaction.reply('An error occurred.');
-    }
+
+    return interaction.reply(`Purchased ${amount} ${itemName}(s) for ${totalCost} credits.`);
   }
 });
 
-client.login(token);
-setInterval(() => {}, 1000 * 60 * 60);
+client.login(process.env.DISCORD_TOKEN);
