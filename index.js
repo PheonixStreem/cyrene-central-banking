@@ -45,6 +45,15 @@ client.on('interactionCreate', async interaction => {
         : 'Your inventory is empty.'
     );
 
+  // MED SHOP DISPLAY
+  if (interaction.commandName === 'medshop') {
+    const items = Object.entries(medShop)
+      .map(([name, price]) => `${name} — ${price} credits`)
+      .join('\n');
+
+    return interaction.reply(`Available medical supplies:\n${items}`);
+  }
+
   // GIVE CREDITS (ADMIN)
   if (interaction.commandName === 'give' && interaction.member.permissions.has('Administrator')) {
     const u = interaction.options.getUser('user');
