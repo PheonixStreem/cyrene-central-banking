@@ -134,22 +134,29 @@ client.on('guildMemberAdd', member => {
 // RAZE SYSTEM
 ///////////////////////
 
-function startRazeWithdrawal(userId, interaction) {
-  if (razeTimers.has(userId)) clearInterval(razeTimers.get(userId));
+function startrazewithdrawl(userID) {
+  const status = getStatus(userId);
+  if (!staus.includes('addicted")) return;
 
-  const timer = setInterval(async () => {
-    const status = getStatus(userId);
-    if (!status.includes('addicted')) return;
+if (razeTimers.has(userID)) clearInterval(razeTimers.get(userId));
 
-    await interaction.followUp({
-      content: "Your body aches for another dose of Raze.",
-      ephemeral: true
-    });
-  }, 5 * 60 * 1000); // every 5 minutes
+let remaining = 15 * 60; // 15 minutes total
+  statuses.get(userId).withdrawlTime = remaining;
+
+  const timer =setInterval(async () => {
+    remaining -= 300; // 5 minutes
+
+    statuses.get(userId).withdrawlTime = remaining;
+
+    if (remaining <= 0) {
+      clearInterval(timer);
+      razeTimers.delete(userId);
+      return;
+    }
+  }, 5 * 60 * 1000);
 
   razeTimers.set(userId, timer);
 }
-
 ///////////////////////
 // INTERACTIONS
 ///////////////////////
@@ -243,29 +250,40 @@ client.on('interactionCreate', async interaction => {
     inv[item]--;
 
     // Raze logic
-    if (item === 'raze') {
-      const addicted = Math.random() < 0.4;
-      const status = getStatus(id);
+   if (item === 'raze') {
+     const addicted = Math.random() < 0.4;
+     const status = getStatus(id);
 
-      if (addicted && !status.includes('addicted')) {
-        status.push('addicted');
-        startRazeWithdrawal(id, interaction);
-        return interaction.reply({ content: 'You feel a dangerous craving forming.', ephemeral: true });
-      }
+     if (addicted && !status.includes('addicted')) {
+       status.push('addicted');
+       startRazeWithdrawl(id);
 
-      return interaction.reply({ content: 'The Raze hits your system and your senses sharpen.', ephemeral: true });
-    }
-
-    return interaction.reply(`${item} used.`);
-  }
-
+       return interaction.reply({
+         content: 'Your heartbeat drifts out of step, suspended in the space where the relief should be.',
+         ephemeral: true
+       });
+     }
+     return interaction.reply({
+       content: 'By the time it fully hits your system, your hands have already stopped shaking and the world is returning to its hightened clarity.',
+         ephemeral: true
+     });
+   }
+    
   // STATUS
-  if (interaction.commandName === 'status') {
-    const status = getStatus(id);
-    if (!status.length) return interaction.reply('No active effects.');
-    return interaction.reply(`Status: ${status.join(', ')}`);
-  }
+if (interaction.commandName === 'status') {
+  const status = getStatus(id);
 
-});
+  if (!status.length)
+    return interaction.reply({ content: 'No active effects.', ephemeral: true });
+
+  let msg = 'Status: ${status.join(', ')}`;
+
+  const data = statuses.get(id);
+  if (data.withdrawlTime) {
+    const mins = Math.floor(data.withdrawlTime / 60);
+    const secs = data.withdrawlTime % 60;
+    msg += `\nNext withdrawl warning in: ${mins}m ${secs}s`;
+  }
+  
 
 client.login(TOKEN);
