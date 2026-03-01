@@ -8,32 +8,15 @@ const client = new Client({
   intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMembers]
 });
 
-///////////////////////////
-// SAFE REPLY (prevents crashes)
-///////////////////////////
-async function safeReply(interaction, payload) {
-  try {
-    if (interaction.replied || interaction.deferred) {
-      await interaction.followUp(payload);
-    } else {
-      await interaction.reply(payload);
-    }
-  } catch (err) {
-    console.error("Reply failed:", err.message);
-  }
-}
+///////////////////////
+// DATA STORAGE
+///////////////////////
 
-///////////////////////////
-// DATA STORES
-///////////////////////////
 const balances = new Map();
 const inventories = new Map();
 const statuses = new Map();
-const addictionTimers = new Map();
+const razeTimers = new Map();
 
-///////////////////////////
-// DEFAULTS
-///////////////////////////
 function getBalance(id) {
   if (!balances.has(id)) balances.set(id, 300);
   return balances.get(id);
@@ -45,33 +28,49 @@ function getInventory(id) {
 }
 
 function getStatus(id) {
-  if (!statuses.has(id)) statuses.set(id, {});
+  if (!statuses.has(id)) statuses.set(id, []);
   return statuses.get(id);
 }
 
-///////////////////////////
+///////////////////////
 // SHOPS
-///////////////////////////
+///////////////////////
+
 const shops = {
   medshop: {
     "nanobot healing vials": 75,
     "portable blood toxin filters": 120,
-    "oxygen rebreather masks": 150,
-    "detox injectors": 100,
-    "neural stabilizer shots": 200
+    "oxygen rebreather masks": 90,
+    "detox injectors": 110,
+    "neural stabilizer shots": 150
   },
   chopshop: {
-    "raze": 250
+    "raze": 200
   }
 };
 
-///////////////////////////
+///////////////////////
 // COMMANDS
-///////////////////////////
+///////////////////////
+
 const commands = [
-  new SlashCommandBuilder().setName('balance').setDescription('Check credits'),
-  new SlashCommandBuilder().setName('inventory').setDescription('View inventory'),
-  new SlashCommandBuilder().setName('status').setDescription('View status effects'),
+
+  new SlashCommandBuilder()
+    .setName('balance')
+    .setDescription('Check your credits'),
+
+  new SlashCommandBuilder()
+    .setName('give')
+    .setDescription('Admin: give credits')
+    .addUserOption(o => o.setName('user').setDescription('User').setRequired(true))
+    .addIntegerOption(o => o.setName('amount').setDescription('Amount').setRequired(true)),
+
+  new SlashCommandBuilder()
+    .setName('giveitem')
+    .setDescription('Admin: give item')
+    .addUserOption(o => o.setName('user').setDescription('User').setRequired(true))
+    .addStringOption(o => o.setName('item').setDescription('Item name').setRequired(true))
+    .addIntegerOption(o => o.setName('amount').setDescription('Amount').setRequired(true)),
 
   new SlashCommandBuilder()
     .setName('shop')
@@ -85,169 +84,102 @@ const commands = [
   new SlashCommandBuilder()
     .setName('buy')
     .setDescription('Buy an item')
-    .addStringOption(o => o.setName('shop').setRequired(true))
-    .addStringOption(o => o.setName('item').setRequired(true)),
+    .addStringOption(o => o.setName('shop').setDescription('Shop name').setRequired(true))
+    .addStringOption(o => o.setName('item').setDescription('Item name').setRequired(true))
+    .addIntegerOption(o => o.setName('amount').setDescription('Amount').setRequired(true)),
+
+  new SlashCommandBuilder()
+    .setName('inventory')
+    .setDescription('Check your inventory'),
 
   new SlashCommandBuilder()
     .setName('use')
     .setDescription('Use an item')
-    .addStringOption(o => o.setName('item').setRequired(true)),
+    .addStringOption(o => o.setName('item').setDescription('Item name').setRequired(true)),
 
   new SlashCommandBuilder()
-    .setName('givecredits')
-    .setDescription('Admin give credits')
-    .addUserOption(o => o.setName('user').setRequired(true))
-    .addIntegerOption(o => o.setName('amount').setRequired(true)),
+    .setName('status')
+    .setDescription('Check status effects')
 
-  new SlashCommandBuilder()
-    .setName('giveitem')
-    .setDescription('Admin give item')
-    .addUserOption(o => o.setName('user').setRequired(true))
-    .addStringOption(o => o.setName('item').setRequired(true))
-    .addIntegerOption(o => o.setName('amount').setRequired(true))
 ].map(c => c.toJSON());
+
+///////////////////////
+// REGISTER COMMANDS
+///////////////////////
 
 const rest = new REST({ version: '10' }).setToken(TOKEN);
 
 (async () => {
-  await rest.put(Routes.applicationGuildCommands(CLIENT_ID, GUILD_ID), { body: commands });
-  console.log("Commands registered");
+  try {
+    await rest.put(Routes.applicationGuildCommands(CLIENT_ID, GUILD_ID), { body: commands });
+    console.log('Commands registered.');
+  } catch (err) {
+    console.error(err);
+  }
 })();
 
-client.once('clientReady', () => console.log(`Online as ${client.user.tag}`));
+///////////////////////
+// EVENTS
+///////////////////////
 
-///////////////////////////
-// ADDICTION TIMER SYSTEM
-///////////////////////////
-function startWithdrawal(userId) {
-  clearInterval(addictionTimers.get(userId));
+client.once('clientReady', () => {
+  console.log(`Online as ${client.user.tag}`);
+});
 
-  let ticks = 0;
+client.on('guildMemberAdd', member => {
+  balances.set(member.id, 300);
+});
 
-  const interval = setInterval(() => {
-    ticks++;
+///////////////////////
+// RAZE SYSTEM
+///////////////////////
+
+function startRazeWithdrawal(userId, interaction) {
+  if (razeTimers.has(userId)) clearInterval(razeTimers.get(userId));
+
+  const timer = setInterval(async () => {
     const status = getStatus(userId);
-    status.razeAddicted = true;
+    if (!status.includes('addicted')) return;
 
-    if (ticks >= 3) {
-      clearInterval(interval);
-      addictionTimers.delete(userId);
-    }
-  }, 5 * 60 * 1000); // 5 minutes
+    await interaction.followUp({
+      content: "Your body aches for another dose of Raze.",
+      ephemeral: true
+    });
+  }, 5 * 60 * 1000); // every 5 minutes
 
-  addictionTimers.set(userId, interval);
+  razeTimers.set(userId, timer);
 }
 
-///////////////////////////
+///////////////////////
 // INTERACTIONS
-///////////////////////////
+///////////////////////
+
 client.on('interactionCreate', async interaction => {
   if (!interaction.isChatInputCommand()) return;
 
-  const userId = interaction.user.id;
+  const id = interaction.user.id;
 
-  ////////////////// BALANCE
+  // BALANCE
   if (interaction.commandName === 'balance') {
-    return safeReply(interaction, `Balance: ${getBalance(userId)} credits`);
+    return interaction.reply(`Balance: ${getBalance(id)} credits`);
   }
 
-  ////////////////// INVENTORY
-  if (interaction.commandName === 'inventory') {
-    const inv = getInventory(userId);
-    if (!Object.keys(inv).length) return safeReply(interaction, "Inventory empty.");
-    return safeReply(interaction, Object.entries(inv).map(([k,v]) => `${k}: ${v}`).join('\n'));
-  }
-
-  ////////////////// STATUS
-  if (interaction.commandName === 'status') {
-    const status = getStatus(userId);
-    if (!Object.keys(status).length) return safeReply(interaction, "No active effects.");
-    return safeReply(interaction, JSON.stringify(status, null, 2));
-  }
-
-  ////////////////// SHOP
-  if (interaction.commandName === 'shop') {
-    const name = interaction.options.getString('name').toLowerCase();
-    if (!shops[name]) return safeReply(interaction, "Shop not found.");
-    const items = Object.entries(shops[name]).map(([k,v]) => `${k} — ${v} credits`).join('\n');
-    return safeReply(interaction, items);
-  }
-
-  ////////////////// BUY
-  if (interaction.commandName === 'buy') {
-    const shop = interaction.options.getString('shop').toLowerCase();
-    const item = interaction.options.getString('item').toLowerCase();
-
-    if (!shops[shop] || !shops[shop][item]) {
-      return safeReply(interaction, "Item not found.");
-    }
-
-    const price = shops[shop][item];
-    const balance = getBalance(userId);
-
-    if (balance < price) {
-      return safeReply(interaction, "Not enough credits.");
-    }
-
-    balances.set(userId, balance - price);
-    const inv = getInventory(userId);
-    inv[item] = (inv[item] || 0) + 1;
-
-    return safeReply(interaction, `Purchased ${item}.`);
-  }
-
-  ////////////////// USE ITEM
-  if (interaction.commandName === 'use') {
-    const item = interaction.options.getString('item').toLowerCase();
-    const inv = getInventory(userId);
-
-    if (!inv[item]) return safeReply(interaction, "You don't have that item.");
-
-    inv[item]--;
-
-    if (item === "raze") {
-      const addicted = Math.random() < 0.5;
-      const status = getStatus(userId);
-
-      if (addicted) {
-        status.razeAddicted = true;
-        startWithdrawal(userId);
-      }
-
-      const responses = addicted ? [
-        "As you use Raze, you feel unstoppable.",
-        "Your pulse hammers — power surges through every nerve.",
-        "The world slows. You feel built for war.",
-        "Your body hums with violent potential."
-      ] : [
-        "The Raze hits your system and your senses are sharpened.",
-        "As the Raze hits your system you bounce in place to burn off the excess energy.",
-        "The Raze floods your system and you feel warm and tingly.",
-        "A surge of focus locks your mind into perfect clarity."
-      ];
-
-      return safeReply(interaction, { content: responses[Math.floor(Math.random()*responses.length)], ephemeral: true });
-    }
-
-    return safeReply(interaction, `${item} used.`);
-  }
-
-  ////////////////// ADMIN GIVE CREDITS
-  if (interaction.commandName === 'givecredits') {
+  // GIVE CREDITS
+  if (interaction.commandName === 'give') {
     if (!interaction.member.permissions.has(PermissionsBitField.Flags.Administrator))
-      return safeReply(interaction, { content: "No permission.", ephemeral: true });
+      return interaction.reply({ content: 'No permission.', ephemeral: true });
 
     const user = interaction.options.getUser('user');
     const amount = interaction.options.getInteger('amount');
 
     balances.set(user.id, getBalance(user.id) + amount);
-    return safeReply(interaction, `Gave ${amount} credits to ${user.tag}`);
+    return interaction.reply(`Gave ${amount} credits to ${user.tag}`);
   }
 
-  ////////////////// ADMIN GIVE ITEM
+  // GIVE ITEM
   if (interaction.commandName === 'giveitem') {
     if (!interaction.member.permissions.has(PermissionsBitField.Flags.Administrator))
-      return safeReply(interaction, { content: "No permission.", ephemeral: true });
+      return interaction.reply({ content: 'No permission.', ephemeral: true });
 
     const user = interaction.options.getUser('user');
     const item = interaction.options.getString('item').toLowerCase();
@@ -256,7 +188,82 @@ client.on('interactionCreate', async interaction => {
     const inv = getInventory(user.id);
     inv[item] = (inv[item] || 0) + amount;
 
-    return safeReply(interaction, `Gave ${amount} ${item} to ${user.tag}`);
+    return interaction.reply(`Gave ${amount} ${item} to ${user.tag}`);
+  }
+
+  // SHOP VIEW
+  if (interaction.commandName === 'shop') {
+    const name = interaction.options.getString('name').toLowerCase();
+    const shop = shops[name];
+    if (!shop) return interaction.reply('Shop not found.');
+
+    let msg = `**${name.toUpperCase()}**\n`;
+    for (const item in shop) msg += `${item} — ${shop[item]} credits\n`;
+
+    return interaction.reply(msg);
+  }
+
+  // BUY
+  if (interaction.commandName === 'buy') {
+    const shopName = interaction.options.getString('shop').toLowerCase();
+    const item = interaction.options.getString('item').toLowerCase();
+    const amount = interaction.options.getInteger('amount');
+
+    const shop = shops[shopName];
+    if (!shop || !shop[item]) return interaction.reply('Item not found.');
+
+    const cost = shop[item] * amount;
+    if (getBalance(id) < cost) return interaction.reply('Not enough credits.');
+
+    balances.set(id, getBalance(id) - cost);
+    const inv = getInventory(id);
+    inv[item] = (inv[item] || 0) + amount;
+
+    return interaction.reply(`Purchased ${amount} ${item}`);
+  }
+
+  // INVENTORY
+  if (interaction.commandName === 'inventory') {
+    const inv = getInventory(id);
+    if (!Object.keys(inv).length) return interaction.reply('Inventory empty.');
+
+    let msg = '**Inventory**\n';
+    for (const item in inv) msg += `${item}: ${inv[item]}\n`;
+
+    return interaction.reply(msg);
+  }
+
+  // USE ITEM
+  if (interaction.commandName === 'use') {
+    const item = interaction.options.getString('item').toLowerCase();
+    const inv = getInventory(id);
+
+    if (!inv[item]) return interaction.reply('You do not have that item.');
+
+    inv[item]--;
+
+    // Raze logic
+    if (item === 'raze') {
+      const addicted = Math.random() < 0.4;
+      const status = getStatus(id);
+
+      if (addicted && !status.includes('addicted')) {
+        status.push('addicted');
+        startRazeWithdrawal(id, interaction);
+        return interaction.reply({ content: 'You feel a dangerous craving forming.', ephemeral: true });
+      }
+
+      return interaction.reply({ content: 'The Raze hits your system and your senses sharpen.', ephemeral: true });
+    }
+
+    return interaction.reply(`${item} used.`);
+  }
+
+  // STATUS
+  if (interaction.commandName === 'status') {
+    const status = getStatus(id);
+    if (!status.length) return interaction.reply('No active effects.');
+    return interaction.reply(`Status: ${status.join(', ')}`);
   }
 
 });
