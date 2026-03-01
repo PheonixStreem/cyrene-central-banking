@@ -17,7 +17,7 @@ const getBalance = id => balances.has(id) ? balances.get(id) : (balances.set(id,
 const inventories = new Map();
 const getInventory = id => inventories.has(id) ? inventories.get(id) : (inventories.set(id, {}), inventories.get(id));
 
-/* ===== Med Shop Items ===== */
+/* ===== Shops ===== */
 
 const medShop = {
   "nanobot healing vials": 120,
@@ -25,6 +25,10 @@ const medShop = {
   "oxygen rebreather masks": 90,
   "detox injectors": 110,
   "neural stabilizer shots": 130
+};
+
+const chopShop = {
+  "raze": 200
 };
 
 /* ===== Slash Commands ===== */
@@ -38,6 +42,10 @@ const commands = [
     .setDescription('View medical supplies'),
 
   new SlashCommandBuilder()
+    .setName('chopshop')
+    .setDescription("View Fahrren's Chop Shop"),
+
+  new SlashCommandBuilder()
     .setName('buy')
     .setDescription('Buy an item')
     .addStringOption(o => o.setName('item').setRequired(true).setDescription('Item name'))
@@ -45,7 +53,7 @@ const commands = [
 
   new SlashCommandBuilder()
     .setName('use')
-    .setDescription('Use an item from inventory')
+    .setDescription('Use an item')
     .addStringOption(o => o.setName('item').setRequired(true).setDescription('Item name'))
     .addIntegerOption(o => o.setName('amount').setRequired(true).setDescription('Quantity')),
 
@@ -104,17 +112,26 @@ client.on('interactionCreate', async interaction => {
     const items = Object.entries(medShop)
       .map(([name, price]) => `${name} — ${price} credits`)
       .join('\n');
-    return interaction.reply(`Available medical supplies:\n${items}`);
+    return interaction.reply(`Medical Supplies:\n${items}`);
   }
 
-  // BUY
+  // CHOP SHOP
+  if (interaction.commandName === 'chopshop') {
+    const items = Object.entries(chopShop)
+      .map(([name, price]) => `${name} — ${price} credits`)
+      .join('\n');
+    return interaction.reply(`Fahrren's Chop Shop:\n${items}`);
+  }
+
+  // BUY (works for both shops)
   if (interaction.commandName === 'buy') {
     const item = interaction.options.getString('item').toLowerCase();
     const amount = interaction.options.getInteger('amount');
 
-    if (!medShop[item]) return interaction.reply('Item not found in med shop.');
+    const price = medShop[item] ?? chopShop[item];
+    if (!price) return interaction.reply('Item not found.');
 
-    const cost = medShop[item] * amount;
+    const cost = price * amount;
     const balance = getBalance(userId);
 
     if (balance < cost) {
