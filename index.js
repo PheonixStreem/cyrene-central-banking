@@ -18,6 +18,16 @@ const getBalance = id => balances.has(id) ? balances.get(id) : (balances.set(id,
 const inventories = new Map();
 const getInventory = id => inventories.has(id) ? inventories.get(id) : (inventories.set(id, {}), inventories.get(id));
 
+/* ===== Med Shop Items ===== */
+
+const medShop = {
+  "nanobot healing vials": 120,
+  "portable blood toxin filters": 150,
+  "oxygen rebreather masks": 90,
+  "detox injectors": 110,
+  "neural stabilizer shots": 130
+};
+
 /* ===== Command Handler ===== */
 
 client.on('interactionCreate', async interaction => {
