@@ -11,12 +11,17 @@ const TOKEN = process.env.TOKEN;
 const CLIENT_ID = process.env.CLIENT_ID;
 const GUILD_ID = process.env.GUILD_ID;
 
+if (!TOKEN || !CLIENT_ID || !GUILD_ID) {
+  console.error("Missing environment variables.");
+  process.exit(1);
+}
+
 const client = new Client({
   intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMembers]
 });
 
 
-// ================== DATA STORES ==================
+// ================= DATA =================
 
 const balances = new Map();
 const inventories = new Map();
@@ -39,10 +44,10 @@ function getStatus(id) {
 }
 
 
-// ================== SHOPS ==================
+// ================= SHOPS =================
 
 const shops = {
-  "medshop": {
+  medshop: {
     "nanobot healing vials": 50,
     "portable blood toxin filters": 75,
     "oxygen rebreather masks": 40,
@@ -50,75 +55,72 @@ const shops = {
     "neural stabilizer shots": 90
   },
   "fahrren chop shop": {
-    "raze": 120
+    raze: 120
   }
 };
 
 
-// ================== COMMANDS ==================
+// ================= COMMANDS =================
 
 const commands = [
-
   new SlashCommandBuilder().setName('balance').setDescription('Check credits'),
-
   new SlashCommandBuilder().setName('inventory').setDescription('View inventory'),
-
-  new SlashCommandBuilder().setName('status').setDescription('View status effects'),
-
+  new SlashCommandBuilder().setName('status').setDescription('View status'),
   new SlashCommandBuilder().setName('shops').setDescription('List shops'),
 
   new SlashCommandBuilder()
     .setName('shop')
     .setDescription('View shop items')
-    .addStringOption(o => o.setName('name').setDescription('Shop name').setRequired(true)),
+    .addStringOption(o => o.setName('name').setRequired(true)),
 
   new SlashCommandBuilder()
     .setName('buy')
-    .setDescription('Buy an item')
-    .addStringOption(o => o.setName('shop').setDescription('Shop').setRequired(true))
-    .addStringOption(o => o.setName('item').setDescription('Item').setRequired(true))
-    .addIntegerOption(o => o.setName('amount').setDescription('Amount').setRequired(true)),
+    .setDescription('Buy item')
+    .addStringOption(o => o.setName('shop').setRequired(true))
+    .addStringOption(o => o.setName('item').setRequired(true))
+    .addIntegerOption(o => o.setName('amount').setRequired(true)),
 
   new SlashCommandBuilder()
     .setName('use')
-    .setDescription('Use an item')
-    .addStringOption(o => o.setName('item').setDescription('Item').setRequired(true)),
+    .setDescription('Use item')
+    .addStringOption(o => o.setName('item').setRequired(true)),
 
   // Admin
   new SlashCommandBuilder()
     .setName('givecredits')
-    .setDescription('Admin: give credits')
+    .setDescription('Admin give credits')
     .addUserOption(o => o.setName('user').setRequired(true))
     .addIntegerOption(o => o.setName('amount').setRequired(true)),
 
   new SlashCommandBuilder()
     .setName('giveitem')
-    .setDescription('Admin: give item')
+    .setDescription('Admin give item')
     .addUserOption(o => o.setName('user').setRequired(true))
     .addStringOption(o => o.setName('item').setRequired(true))
     .addIntegerOption(o => o.setName('amount').setRequired(true)),
 
   new SlashCommandBuilder()
     .setName('cure')
-    .setDescription('Admin: cure Raze addiction')
+    .setDescription('Admin cure raze')
     .addUserOption(o => o.setName('user').setRequired(true))
-
 ].map(c => c.toJSON());
 
 
-// ================== REGISTER COMMANDS ==================
+// ================= REGISTER =================
 
 const rest = new REST({ version: '10' }).setToken(TOKEN);
 
 (async () => {
-  await rest.put(
-    Routes.applicationGuildCommands(CLIENT_ID, GUILD_ID),
-    { body: commands }
-  );
+  try {
+    await rest.put(Routes.applicationGuildCommands(CLIENT_ID, GUILD_ID), { body: commands });
+    console.log("Commands registered");
+  } catch (err) {
+    console.error("Command registration failed:", err);
+  }
 })();
 
 
-// ================== READY ==================
+// ================= READY =================
 
 client.once('clientReady', () => {
   console.log(`Online as ${client.user.tag}`);
@@ -127,172 +129,149 @@ client.once('clientReady', () => {
 client.on('guildMemberAdd', m => balances.set(m.id, 300));
 
 
-// ================== INTERACTIONS ==================
+// ================= INTERACTIONS =================
 
 client.on('interactionCreate', async interaction => {
   if (!interaction.isChatInputCommand()) return;
 
   const id = interaction.user.id;
 
-  // ---------- BASIC ----------
+  try {
 
-  if (interaction.commandName === 'balance') {
-    return interaction.reply(`Balance: ${getBalance(id)} credits`);
-  }
+    if (interaction.commandName === 'balance') {
+      return interaction.reply(`Balance: ${getBalance(id)} credits`);
+    }
 
-  if (interaction.commandName === 'inventory') {
-    const inv = getInventory(id);
-    if (!Object.keys(inv).length) return interaction.reply('Inventory empty.');
-    return interaction.reply(Object.entries(inv).map(([i,q]) => `${i} x${q}`).join('\n'));
-  }
+    if (interaction.commandName === 'inventory') {
+      const inv = getInventory(id);
+      if (!Object.keys(inv).length) return interaction.reply('Inventory empty.');
+      return interaction.reply(Object.entries(inv).map(([i,q]) => `${i} x${q}`).join('\n'));
+    }
 
-  if (interaction.commandName === 'status') {
-    const s = getStatus(id);
-    return interaction.reply({ content: s.length ? s.join('\n') : 'No active effects.', ephemeral: true });
-  }
+    if (interaction.commandName === 'status') {
+      const s = getStatus(id);
+      return interaction.reply({ content: s.length ? s.join('\n') : 'No effects.', ephemeral: true });
+    }
 
-  // ---------- SHOPS ----------
+    if (interaction.commandName === 'shops') {
+      return interaction.reply(Object.keys(shops).join('\n'));
+    }
 
-  if (interaction.commandName === 'shops') {
-    return interaction.reply(Object.keys(shops).join('\n'));
-  }
+    if (interaction.commandName === 'shop') {
+      const name = interaction.options.getString('name').toLowerCase();
+      const shop = shops[name];
+      if (!shop) return interaction.reply('Shop not found.');
+      return interaction.reply(Object.entries(shop).map(([i,p]) => `${i} — ${p}`).join('\n'));
+    }
 
-  if (interaction.commandName === 'shop') {
-    const name = interaction.options.getString('name').toLowerCase();
-    const shop = shops[name];
-    if (!shop) return interaction.reply('Shop not found.');
-    return interaction.reply(Object.entries(shop).map(([i,p]) => `${i} — ${p}`).join('\n'));
-  }
+    if (interaction.commandName === 'buy') {
+      const shopName = interaction.options.getString('shop').toLowerCase();
+      const item = interaction.options.getString('item').toLowerCase();
+      const amount = interaction.options.getInteger('amount');
 
-  if (interaction.commandName === 'buy') {
-    const shopName = interaction.options.getString('shop').toLowerCase();
-    const item = interaction.options.getString('item').toLowerCase();
-    const amount = interaction.options.getInteger('amount');
+      const shop = shops[shopName];
+      if (!shop) return interaction.reply({ content: 'Shop not found.', ephemeral: true });
 
-    const shop = shops[shopName];
-    if (!shop) return interaction.reply({ content: 'Shop not found.', ephemeral: true });
+      const price = shop[item];
+      if (!price) return interaction.reply({ content: 'Item not found.', ephemeral: true });
 
-    const price = shop[item];
-    if (!price) return interaction.reply({ content: 'Item not found.', ephemeral: true });
+      const total = price * amount;
+      if (getBalance(id) < total) return interaction.reply({ content: 'Not enough credits.', ephemeral: true });
 
-    const total = price * amount;
-    if (getBalance(id) < total) return interaction.reply({ content: 'Not enough credits.', ephemeral: true });
+      balances.set(id, getBalance(id) - total);
+      const inv = getInventory(id);
+      inv[item] = (inv[item] || 0) + amount;
 
-    balances.set(id, getBalance(id) - total);
+      return interaction.reply(`Bought ${amount} ${item}.`);
+    }
 
-    const inv = getInventory(id);
-    inv[item] = (inv[item] || 0) + amount;
+    if (interaction.commandName === 'use') {
+      const item = interaction.options.getString('item').toLowerCase();
+      const inv = getInventory(id);
+      if (!inv[item]) return interaction.reply({ content: 'You do not have that item.', ephemeral: true });
 
-    return interaction.reply(`Bought ${amount} ${item}.`);
-  }
+      inv[item]--;
 
-  // ---------- USE ITEM ----------
+      if (item === 'raze') {
+        const addicted = Math.random() < 0.4;
 
-  if (interaction.commandName === 'use') {
-    const item = interaction.options.getString('item').toLowerCase();
-    const inv = getInventory(id);
-    if (!inv[item]) return interaction.reply({ content: 'You do not have that item.', ephemeral: true });
+        const normal = [
+          "The Raze hits your system and your senses sharpen.",
+          "You bounce in place, burning off the excess energy.",
+          "Warmth spreads through your body as the Raze takes hold.",
+          "Your muscles coil with restless energy."
+        ];
 
-    inv[item]--;
+        const addictedMsgs = [
+          "You feel unstoppable.",
+          "Power surges through you — too good to let go.",
+          "Your body demands more.",
+          "The edge feels permanent… for now."
+        ];
 
-    // Raze logic
-    if (item === 'raze') {
-      const addicted = Math.random() < 0.4;
+        await interaction.reply({
+          content: addicted
+            ? addictedMsgs[Math.floor(Math.random()*addictedMsgs.length)]
+            : normal[Math.floor(Math.random()*normal.length)],
+          ephemeral: true
+        });
 
-      const normalMsgs = [
-        "The Raze hits your system and your senses sharpen.",
-        "You bounce in place, burning off the excess energy.",
-        "Warmth spreads through your body as the Raze takes hold.",
-        "Your muscles coil with restless energy."
-      ];
+        if (addicted) {
+          getStatus(id).push('Raze Dependency');
 
-      const addictMsgs = [
-        "You feel unstoppable.",
-        "Power surges through you — too good to let go.",
-        "Your body demands more.",
-        "The edge feels permanent… for now."
-      ];
+          if (razeTimers.has(id)) clearInterval(razeTimers.get(id));
 
-      await interaction.reply({
-        content: addicted
-          ? addictMsgs[Math.floor(Math.random()*addictMsgs.length)]
-          : normalMsgs[Math.floor(Math.random()*normalMsgs.length)],
-        ephemeral: true
-      });
+          let warnings = 0;
 
-      if (addicted) {
-        getStatus(id).push('Raze Dependency');
+          const timer = setInterval(() => {
+            warnings++;
+            if (warnings >= 3) {
+              getStatus(id).push('Withdrawal');
+              clearInterval(timer);
+              razeTimers.delete(id);
+            }
+          }, 10 * 60 * 1000);
 
-        if (razeTimers.has(id)) clearInterval(razeTimers.get(id));
+          razeTimers.set(id, timer);
+        }
 
-        let warnings = 0;
-
-        const timer = setInterval(async () => {
-          warnings++;
-
-          if (warnings <= 3) {
-            await interaction.user.send("Your body aches for another dose of Raze.");
-          }
-
-          if (warnings >= 3) {
-            getStatus(id).push('Withdrawal');
-            clearInterval(timer);
-            razeTimers.delete(id);
-          }
-
-        }, 10 * 60 * 1000); // 10 minutes
-
-        razeTimers.set(id, timer);
+        return;
       }
 
-      return;
+      return interaction.reply({ content: 'Item used.', ephemeral: true });
     }
 
-    // Other med effects
-    const effects = {
-      "nanobot healing vials": "You feel your wounds knitting together.",
-      "portable blood toxin filters": "Your blood feels clean and clear.",
-      "oxygen rebreather masks": "Breathing becomes effortless.",
-      "detox injectors": "Your system purges harmful substances.",
-      "neural stabilizer shots": "Your thoughts steady and sharpen."
-    };
+    // ===== ADMIN =====
 
-    if (effects[item]) {
-      getStatus(id).push(item);
-      return interaction.reply({ content: effects[item], ephemeral: true });
+    if (!interaction.member.permissions.has(PermissionsBitField.Flags.Administrator)) return;
+
+    if (interaction.commandName === 'givecredits') {
+      const user = interaction.options.getUser('user');
+      const amt = interaction.options.getInteger('amount');
+      balances.set(user.id, getBalance(user.id) + amt);
+      return interaction.reply('Credits granted.');
     }
 
-    return interaction.reply({ content: 'Item used.', ephemeral: true });
+    if (interaction.commandName === 'giveitem') {
+      const user = interaction.options.getUser('user');
+      const item = interaction.options.getString('item').toLowerCase();
+      const amt = interaction.options.getInteger('amount');
+      const inv = getInventory(user.id);
+      inv[item] = (inv[item] || 0) + amt;
+      return interaction.reply('Item granted.');
+    }
+
+    if (interaction.commandName === 'cure') {
+      const user = interaction.options.getUser('user');
+      statuses.set(user.id, []);
+      if (razeTimers.has(user.id)) clearInterval(razeTimers.get(user.id));
+      razeTimers.delete(user.id);
+      return interaction.reply('User cured.');
+    }
+
+  } catch (err) {
+    console.error("Interaction error:", err);
   }
-
-  // ---------- ADMIN ----------
-
-  if (!interaction.member.permissions.has(PermissionsBitField.Flags.Administrator)) return;
-
-  if (interaction.commandName === 'givecredits') {
-    const user = interaction.options.getUser('user');
-    const amt = interaction.options.getInteger('amount');
-    balances.set(user.id, getBalance(user.id) + amt);
-    return interaction.reply('Credits granted.');
-  }
-
-  if (interaction.commandName === 'giveitem') {
-    const user = interaction.options.getUser('user');
-    const item = interaction.options.getString('item').toLowerCase();
-    const amt = interaction.options.getInteger('amount');
-    const inv = getInventory(user.id);
-    inv[item] = (inv[item] || 0) + amt;
-    return interaction.reply('Item granted.');
-  }
-
-  if (interaction.commandName === 'cure') {
-    const user = interaction.options.getUser('user');
-    statuses.set(user.id, []);
-    if (razeTimers.has(user.id)) clearInterval(razeTimers.get(user.id));
-    razeTimers.delete(user.id);
-    return interaction.reply('User cured.');
-  }
-
 });
 
 client.login(TOKEN);
