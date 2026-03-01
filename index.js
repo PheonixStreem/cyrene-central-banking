@@ -1,12 +1,11 @@
-const { Client, GatewayIntentBits } = require('discord.js');
+const { Client, GatewayIntentBits, SlashCommandBuilder, Routes } = require('discord.js');
+const { REST } = require('@discordjs/rest');
 
 const TOKEN = process.env.TOKEN;
+const CLIENT_ID = process.env.CLIENT_ID;
+const GUILD_ID = process.env.GUILD_ID;
 
 const client = new Client({ intents: [GatewayIntentBits.Guilds] });
-
-client.once('clientReady', () => console.log(`Online as ${client.user.tag}`));
-
-client.login(TOKEN);
 
 /* ===== Credits ===== */
 
@@ -28,24 +27,67 @@ const medShop = {
   "neural stabilizer shots": 130
 };
 
+/* ===== Slash Command Definitions ===== */
+
+const commands = [
+  new SlashCommandBuilder().setName('balance').setDescription('Check credits'),
+  new SlashCommandBuilder().setName('inventory').setDescription('View inventory'),
+
+  new SlashCommandBuilder()
+    .setName('give')
+    .setDescription('Admin: give credits')
+    .addUserOption(o => o.setName('user').setRequired(true).setDescription('User'))
+    .addIntegerOption(o => o.setName('amount').setRequired(true).setDescription('Amount')),
+
+  new SlashCommandBuilder()
+    .setName('giveitem')
+    .setDescription('Admin: give item')
+    .addUserOption(o => o.setName('user').setRequired(true).setDescription('User'))
+    .addStringOption(o => o.setName('item').setRequired(true).setDescription('Item'))
+    .addIntegerOption(o => o.setName('amount').setRequired(true).setDescription('Amount')),
+
+  new SlashCommandBuilder()
+    .setName('medshop')
+    .setDescription('View available medical supplies')
+].map(cmd => cmd.toJSON());
+
+/* ===== Register Commands on Startup ===== */
+
+client.once('clientReady', async () => {
+  console.log(`Online as ${client.user.tag}`);
+
+  try {
+    const rest = new REST({ version: '10' }).setToken(TOKEN);
+    await rest.put(
+      Routes.applicationGuildCommands(CLIENT_ID, GUILD_ID),
+      { body: commands }
+    );
+    console.log('Slash commands registered.');
+  } catch (err) {
+    console.error('Registration error:', err);
+  }
+});
+
 /* ===== Command Handler ===== */
 
 client.on('interactionCreate', async interaction => {
   if (!interaction.isChatInputCommand()) return;
 
+  const userId = interaction.user.id;
+
   // BALANCE
   if (interaction.commandName === 'balance')
-    return interaction.reply(`Balance: ${getBalance(interaction.user.id)} credits`);
+    return interaction.reply(`Balance: ${getBalance(userId)} credits`);
 
   // INVENTORY
   if (interaction.commandName === 'inventory')
     return interaction.reply(
-      Object.keys(getInventory(interaction.user.id)).length
-        ? 'Your inventory:\n' + Object.entries(getInventory(interaction.user.id)).map(([i,q]) => `${i}: ${q}`).join('\n')
+      Object.keys(getInventory(userId)).length
+        ? 'Your inventory:\n' + Object.entries(getInventory(userId)).map(([i,q]) => `${i}: ${q}`).join('\n')
         : 'Your inventory is empty.'
     );
 
-  // MED SHOP DISPLAY
+  // MED SHOP
   if (interaction.commandName === 'medshop') {
     const items = Object.entries(medShop)
       .map(([name, price]) => `${name} — ${price} credits`)
@@ -72,3 +114,5 @@ client.on('interactionCreate', async interaction => {
     return interaction.reply(`Gave ${amt} ${item}(s) to ${u.tag}.`);
   }
 });
+
+client.login(TOKEN);
