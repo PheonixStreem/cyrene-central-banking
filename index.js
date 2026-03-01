@@ -27,11 +27,27 @@ const medShop = {
   "neural stabilizer shots": 130
 };
 
-/* ===== Slash Command Definitions ===== */
+/* ===== Slash Commands ===== */
 
 const commands = [
   new SlashCommandBuilder().setName('balance').setDescription('Check credits'),
   new SlashCommandBuilder().setName('inventory').setDescription('View inventory'),
+
+  new SlashCommandBuilder()
+    .setName('medshop')
+    .setDescription('View medical supplies'),
+
+  new SlashCommandBuilder()
+    .setName('buy')
+    .setDescription('Buy an item')
+    .addStringOption(o => o.setName('item').setRequired(true).setDescription('Item name'))
+    .addIntegerOption(o => o.setName('amount').setRequired(true).setDescription('Quantity')),
+
+  new SlashCommandBuilder()
+    .setName('use')
+    .setDescription('Use an item from inventory')
+    .addStringOption(o => o.setName('item').setRequired(true).setDescription('Item name'))
+    .addIntegerOption(o => o.setName('amount').setRequired(true).setDescription('Quantity')),
 
   new SlashCommandBuilder()
     .setName('give')
@@ -44,17 +60,7 @@ const commands = [
     .setDescription('Admin: give item')
     .addUserOption(o => o.setName('user').setRequired(true).setDescription('User'))
     .addStringOption(o => o.setName('item').setRequired(true).setDescription('Item'))
-    .addIntegerOption(o => o.setName('amount').setRequired(true).setDescription('Amount')),
-
-  new SlashCommandBuilder()
-    .setName('medshop')
-    .setDescription('View available medical supplies'),
-
-  new SlashCommandBuilder()
-    .setName('buy')
-    .setDescription('Buy an item from available shops')
-    .addStringOption(o => o.setName('item').setRequired(true).setDescription('Item name'))
-    .addIntegerOption(o => o.setName('amount').setRequired(true).setDescription('Quantity'))
+    .addIntegerOption(o => o.setName('amount').setRequired(true).setDescription('Amount'))
 ].map(cmd => cmd.toJSON());
 
 /* ===== Register Commands ===== */
@@ -116,11 +122,27 @@ client.on('interactionCreate', async interaction => {
     }
 
     balances.set(userId, balance - cost);
-
     const inv = getInventory(userId);
     inv[item] = (inv[item] || 0) + amount;
 
     return interaction.reply(`Purchased ${amount} ${item}(s) for ${cost} credits.`);
+  }
+
+  // USE ITEM
+  if (interaction.commandName === 'use') {
+    const item = interaction.options.getString('item').toLowerCase();
+    const amount = interaction.options.getInteger('amount');
+
+    const inv = getInventory(userId);
+
+    if (!inv[item] || inv[item] < amount) {
+      return interaction.reply(`You don't have enough ${item}.`);
+    }
+
+    inv[item] -= amount;
+    if (inv[item] <= 0) delete inv[item];
+
+    return interaction.reply(`Used ${amount} ${item}(s).`);
   }
 
   // GIVE CREDITS (ADMIN)
