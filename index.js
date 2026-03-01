@@ -5,7 +5,7 @@ const TOKEN = process.env.TOKEN;
 const CLIENT_ID = process.env.CLIENT_ID;
 const GUILD_ID = process.env.GUILD_ID;
 
-const client = new Client({ intents: [GatewayIntentBits.Guilds] });
+const client = new Client({ intents: [GatewayIntentBits.Guilds, GatewayIntentBits.DirectMessages] });
 
 /* ===== Credits ===== */
 
@@ -16,6 +16,10 @@ const getBalance = id => balances.has(id) ? balances.get(id) : (balances.set(id,
 
 const inventories = new Map();
 const getInventory = id => inventories.has(id) ? inventories.get(id) : (inventories.set(id, {}), inventories.get(id));
+
+/* ===== Addiction Tracking ===== */
+
+const razeAddiction = new Map();
 
 /* ===== Shops ===== */
 
@@ -97,22 +101,23 @@ client.on('interactionCreate', async interaction => {
 
   // BALANCE
   if (interaction.commandName === 'balance')
-    return interaction.reply(`Balance: ${getBalance(userId)} credits`);
+    return interaction.reply({ content: `Balance: ${getBalance(userId)} credits`, ephemeral: true });
 
   // INVENTORY
   if (interaction.commandName === 'inventory')
-    return interaction.reply(
-      Object.keys(getInventory(userId)).length
+    return interaction.reply({
+      content: Object.keys(getInventory(userId)).length
         ? 'Your inventory:\n' + Object.entries(getInventory(userId)).map(([i,q]) => `${i}: ${q}`).join('\n')
-        : 'Your inventory is empty.'
-    );
+        : 'Your inventory is empty.',
+      ephemeral: true
+    });
 
   // MED SHOP
   if (interaction.commandName === 'medshop') {
     const items = Object.entries(medShop)
       .map(([name, price]) => `${name} — ${price} credits`)
       .join('\n');
-    return interaction.reply(`Medical Supplies:\n${items}`);
+    return interaction.reply({ content: `Medical Supplies:\n${items}`, ephemeral: true });
   }
 
   // CHOP SHOP
@@ -120,29 +125,29 @@ client.on('interactionCreate', async interaction => {
     const items = Object.entries(chopShop)
       .map(([name, price]) => `${name} — ${price} credits`)
       .join('\n');
-    return interaction.reply(`Fahrren's Chop Shop:\n${items}`);
+    return interaction.reply({ content: `Fahrren's Chop Shop:\n${items}`, ephemeral: true });
   }
 
-  // BUY (works for both shops)
+  // BUY
   if (interaction.commandName === 'buy') {
     const item = interaction.options.getString('item').toLowerCase();
     const amount = interaction.options.getInteger('amount');
 
     const price = medShop[item] ?? chopShop[item];
-    if (!price) return interaction.reply('Item not found.');
+    if (!price) return interaction.reply({ content: 'Item not found.', ephemeral: true });
 
     const cost = price * amount;
     const balance = getBalance(userId);
 
     if (balance < cost) {
-      return interaction.reply(`You need ${cost} credits but only have ${balance}.`);
+      return interaction.reply({ content: `You need ${cost} credits but only have ${balance}.`, ephemeral: true });
     }
 
     balances.set(userId, balance - cost);
     const inv = getInventory(userId);
     inv[item] = (inv[item] || 0) + amount;
 
-    return interaction.reply(`Purchased ${amount} ${item}(s) for ${cost} credits.`);
+    return interaction.reply({ content: `Purchased ${amount} ${item}(s) for ${cost} credits.`, ephemeral: true });
   }
 
   // USE ITEM
@@ -153,13 +158,49 @@ client.on('interactionCreate', async interaction => {
     const inv = getInventory(userId);
 
     if (!inv[item] || inv[item] < amount) {
-      return interaction.reply(`You don't have enough ${item}.`);
+      return interaction.reply({ content: `You don't have enough ${item}.`, ephemeral: true });
     }
 
     inv[item] -= amount;
     if (inv[item] <= 0) delete inv[item];
 
-    return interaction.reply(`Used ${amount} ${item}(s).`);
+    // RAZE ADDICTION
+    if (item === "raze") {
+      let hooked = razeAddiction.get(userId);
+
+      if (!hooked) {
+        if (Math.random() < 0.4) {
+          razeAddiction.set(userId, {
+            warnings: 0,
+            timer: startRazeTimer(userId, interaction.user)
+          });
+
+          return interaction.reply({
+            content: "The Raze hits hard. Perfect clarity. Perfect power. Somewhere deep down… something wants more.",
+            ephemeral: true
+          });
+        } else {
+          return interaction.reply({
+            content: "The Raze burns through your system. You walk away clean — for now.",
+            ephemeral: true
+          });
+        }
+      }
+
+      // Already hooked → reset timer
+      clearInterval(hooked.timer);
+      razeAddiction.set(userId, {
+        warnings: 0,
+        timer: startRazeTimer(userId, interaction.user)
+      });
+
+      return interaction.reply({
+        content: "Relief floods your system. The hunger quiets… temporarily.",
+        ephemeral: true
+      });
+    }
+
+    return interaction.reply({ content: `Used ${amount} ${item}(s).`, ephemeral: true });
   }
 
   // GIVE CREDITS (ADMIN)
@@ -167,7 +208,7 @@ client.on('interactionCreate', async interaction => {
     const u = interaction.options.getUser('user');
     const a = interaction.options.getInteger('amount');
     balances.set(u.id, getBalance(u.id) + a);
-    return interaction.reply(`Gave ${a} credits to ${u.tag}.`);
+    return interaction.reply({ content: `Gave ${a} credits to ${u.tag}.`, ephemeral: true });
   }
 
   // GIVE ITEM (ADMIN)
@@ -177,8 +218,28 @@ client.on('interactionCreate', async interaction => {
     const amt = interaction.options.getInteger('amount');
     const inv = getInventory(u.id);
     inv[item] = (inv[item] || 0) + amt;
-    return interaction.reply(`Gave ${amt} ${item}(s) to ${u.tag}.`);
+    return interaction.reply({ content: `Gave ${amt} ${item}(s) to ${u.tag}.`, ephemeral: true });
   }
 });
+
+/* ===== Raze Timer ===== */
+
+function startRazeTimer(userId, user) {
+  let warnings = 0;
+
+  return setInterval(async () => {
+    warnings++;
+
+    try {
+      if (warnings <= 2) {
+        await user.send("Your body aches for another dose of Raze. The edge is fading.");
+      }
+
+      if (warnings === 3) {
+        await user.send("Withdrawal sets in. Your nerves scream. You need Raze.");
+      }
+    } catch {}
+  }, 10 * 60 * 1000);
+}
 
 client.login(TOKEN);
