@@ -12,11 +12,8 @@ const CLIENT_ID = process.env.CLIENT_ID;
 const GUILD_ID = process.env.GUILD_ID;
 
 const client = new Client({
-  intents: [
-    GatewayIntentBits.Guilds,
-    GatewayIntentBits.GuildMembers,
-    GatewayIntentBits.DirectMessages
-  ]
+  intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMembers, GatewayIntentBits.DirectMessages],
+  partials: ['CHANNEL']
 });
 
 //////////////////////////////
@@ -25,9 +22,8 @@ const client = new Client({
 
 const balances = new Map();
 const inventories = new Map();
-const addictions = new Map();   // userId -> { drug, endTime, warned[] }
-const lastRazeUse = new Map();  // overdose tracking
-const effects = new Map();      // userId -> [{ name, expires }]
+const addictions = new Map();
+const lastRazeUse = new Map();
 
 //////////////////////////////
 // HELPERS
@@ -41,16 +37,6 @@ function getBalance(userId) {
 function getInventory(userId) {
   if (!inventories.has(userId)) inventories.set(userId, {});
   return inventories.get(userId);
-}
-
-function addEffect(userId, name, durationMs) {
-  if (!effects.has(userId)) effects.set(userId, []);
-  effects.get(userId).push({ name, expires: Date.now() + durationMs });
-}
-
-function getEffects(userId) {
-  if (!effects.has(userId)) return [];
-  return effects.get(userId).filter(e => e.expires > Date.now());
 }
 
 //////////////////////////////
@@ -67,33 +53,6 @@ const shops = {
   },
   chopshop: {
     raze: 200
-  }
-};
-
-//////////////////////////////
-// MEDICAL EFFECT DEFINITIONS
-//////////////////////////////
-
-const medicalEffects = {
-  "nanobot healing vials": {
-    name: "Regeneration",
-    duration: 5 * 60 * 1000,
-    message: "Nanobots disperse through your bloodstream, knitting tissue and sealing micro-tears."
-  },
-  "detox injectors": {
-    name: "Purified",
-    duration: 10 * 60 * 1000,
-    message: "A cooling wave spreads through your veins as toxins are neutralized."
-  },
-  "neural stabilizer shots": {
-    name: "Stabilized",
-    duration: 10 * 60 * 1000,
-    message: "Your thoughts sharpen as erratic neural spikes are dampened."
-  },
-  "oxygen rebreather masks": {
-    name: "Oxygenated",
-    duration: 5 * 60 * 1000,
-    message: "Your lungs burn with clean air. Every movement feels lighter."
   }
 };
 
@@ -143,6 +102,7 @@ const commands = [
 //////////////////////////////
 
 const rest = new REST({ version: '10' }).setToken(TOKEN);
+
 (async () => {
   await rest.put(Routes.applicationGuildCommands(CLIENT_ID, GUILD_ID), { body: commands });
   console.log('Commands registered');
@@ -173,7 +133,9 @@ setInterval(async () => {
 
     if ([10, 5].includes(minutesLeft) && !data.warned.includes(minutesLeft)) {
       const user = await client.users.fetch(userId).catch(() => null);
-      if (user) user.send("The analgesic haze is thinning. Pain waits beneath the surface. Your system wants Raze.");
+      if (user) {
+        user.send("The analgesic haze is thinning. Pain waits beneath the surface. Your system wants Raze.");
+      }
       data.warned.push(minutesLeft);
     }
   }
@@ -187,18 +149,15 @@ client.on('interactionCreate', async interaction => {
   if (!interaction.isChatInputCommand()) return;
   const userId = interaction.user.id;
 
-  ////////////////// BALANCE
   if (interaction.commandName === 'balance')
     return interaction.reply({ content: `Balance: ${getBalance(userId)} credits`, ephemeral: true });
 
-  ////////////////// INVENTORY
   if (interaction.commandName === 'inventory') {
     const inv = getInventory(userId);
     const list = Object.entries(inv).map(([k,v]) => `${k} x${v}`).join('\n') || 'Empty';
     return interaction.reply({ content: list, ephemeral: true });
   }
 
-  ////////////////// BUY
   if (interaction.commandName === 'buy') {
     const shopName = interaction.options.getString('shop');
     const item = interaction.options.getString('item').toLowerCase();
@@ -219,7 +178,6 @@ client.on('interactionCreate', async interaction => {
     return interaction.reply({ content: `Purchased ${amount} ${item}(s).`, ephemeral: true });
   }
 
-  ////////////////// USE
   if (interaction.commandName === 'use') {
     const item = interaction.options.getString('item').toLowerCase();
     const inv = getInventory(userId);
@@ -229,14 +187,6 @@ client.on('interactionCreate', async interaction => {
 
     inv[item]--;
 
-    // MEDICAL EFFECTS
-    if (medicalEffects[item]) {
-      const effect = medicalEffects[item];
-      addEffect(userId, effect.name, effect.duration);
-      return interaction.reply({ content: effect.message, ephemeral: true });
-    }
-
-    // RAZE
     if (item === 'raze') {
       const now = Date.now();
 
@@ -268,29 +218,20 @@ client.on('interactionCreate', async interaction => {
     return interaction.reply({ content: `Used ${item}.`, ephemeral: true });
   }
 
-  ////////////////// STATUS
   if (interaction.commandName === 'status') {
-    const addiction = addictions.get(userId);
-    const activeEffects = getEffects(userId);
+    const data = addictions.get(userId);
 
-    let effectText = "None";
-    if (activeEffects.length > 0) {
-      effectText = activeEffects.map(e => {
-        const mins = Math.ceil((e.expires - Date.now()) / 60000);
-        return `${e.name} (${mins} min)`;
-      }).join('\n');
-    }
+    if (!data)
+      return interaction.reply({ content: 'You feel stable. No active dependencies.', ephemeral: true });
+
+    const remaining = Math.ceil((data.endTime - Date.now()) / 60000);
 
     return interaction.reply({
-      content:
-        `Condition Report:\n` +
-        `Dependency: ${addiction ? addiction.drug : 'None'}\n` +
-        `Active Effects:\n${effectText}`,
+      content: `Condition Report:\nDependency: ${data.drug}\nWithdrawal onset in: ${remaining} minute(s)`,
       ephemeral: true
     });
   }
 
-  ////////////////// GIVE
   if (interaction.commandName === 'give') {
     if (!interaction.member.permissions.has(PermissionsBitField.Flags.Administrator))
       return interaction.reply({ content: 'No permission.', ephemeral: true });
@@ -302,7 +243,6 @@ client.on('interactionCreate', async interaction => {
     return interaction.reply(`Gave ${amount} credits to ${target.tag}.`);
   }
 
-  ////////////////// CURE
   if (interaction.commandName === 'cure') {
     if (!interaction.member.permissions.has(PermissionsBitField.Flags.Administrator))
       return interaction.reply({ content: 'No permission.', ephemeral: true });
