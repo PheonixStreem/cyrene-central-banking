@@ -48,10 +48,16 @@ const commands = [
 
   new SlashCommandBuilder()
     .setName('medshop')
-    .setDescription('View available medical supplies')
+    .setDescription('View available medical supplies'),
+
+  new SlashCommandBuilder()
+    .setName('buy')
+    .setDescription('Buy an item from available shops')
+    .addStringOption(o => o.setName('item').setRequired(true).setDescription('Item name'))
+    .addIntegerOption(o => o.setName('amount').setRequired(true).setDescription('Quantity'))
 ].map(cmd => cmd.toJSON());
 
-/* ===== Register Commands on Startup ===== */
+/* ===== Register Commands ===== */
 
 client.once('clientReady', async () => {
   console.log(`Online as ${client.user.tag}`);
@@ -92,8 +98,29 @@ client.on('interactionCreate', async interaction => {
     const items = Object.entries(medShop)
       .map(([name, price]) => `${name} — ${price} credits`)
       .join('\n');
-
     return interaction.reply(`Available medical supplies:\n${items}`);
+  }
+
+  // BUY
+  if (interaction.commandName === 'buy') {
+    const item = interaction.options.getString('item').toLowerCase();
+    const amount = interaction.options.getInteger('amount');
+
+    if (!medShop[item]) return interaction.reply('Item not found in med shop.');
+
+    const cost = medShop[item] * amount;
+    const balance = getBalance(userId);
+
+    if (balance < cost) {
+      return interaction.reply(`You need ${cost} credits but only have ${balance}.`);
+    }
+
+    balances.set(userId, balance - cost);
+
+    const inv = getInventory(userId);
+    inv[item] = (inv[item] || 0) + amount;
+
+    return interaction.reply(`Purchased ${amount} ${item}(s) for ${cost} credits.`);
   }
 
   // GIVE CREDITS (ADMIN)
